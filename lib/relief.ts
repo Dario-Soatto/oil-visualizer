@@ -31,6 +31,19 @@ export function rgb(hex: string): [number, number, number] {
   ];
 }
 
+/**
+ * Floor for the extrusion, taken across every surface the view can show.
+ * Deriving it from one surface only lets another one dip below the base plane
+ * and render as a column hanging under the map.
+ */
+export function elevationBase(r: Relief): number {
+  let lo = Infinity;
+  for (const p of r.grid.raw) if (p != null && p < lo) lo = p;
+  for (const p of r.grid.smooth) if (p != null && p < lo) lo = p;
+  for (const c of r.counties) if (c.p != null && c.p < lo) lo = c.p;
+  return isFinite(lo) ? lo : 0;
+}
+
 /** Sorted price list for the shared colour scale, from whichever surface is up. */
 export function sortedPrices(r: Relief): number[] {
   const v: number[] = [];

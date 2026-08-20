@@ -118,11 +118,16 @@ print(f"grid {gw}x{gh} = {gw*gh:,} cells, {filled:,} land ({100*filled/(gw*gh):.
 
 # ---- state-clipped smoothing --------------------------------------------
 smooth = np.full_like(price, np.nan)
+# A cell belongs to a state even when nobody reports a price there (the 27
+# unpriced counties). Those must stay out of the average entirely -- folding
+# them in as zeros drags neighbours down toward $0 and the column goes below
+# the base plane.
+priced_mask = np.isfinite(price)
 for s, si in state_ix.items():
-    mask = (stidx == si)
+    mask = (stidx == si) & priced_mask
     if not mask.any():
         continue
-    vals = np.where(mask, np.nan_to_num(price), 0.0)
+    vals = np.where(mask, price, 0.0)
     m = mask.astype(np.float32)
     # normalised convolution: blur values and mask together, then divide, so
     # cells never borrow from a neighbouring state across a border cliff
@@ -131,6 +136,11 @@ for s, si in state_ix.items():
     with np.errstate(invalid="ignore", divide="ignore"):
         sm = np.where(den > 1e-6, num / den, np.nan)
     smooth[mask] = sm[mask]
+
+# a weighted average of in-state prices can never leave the input range
+lo, hi = np.nanmin(price), np.nanmax(price)
+bad = np.isfinite(smooth) & ((smooth < lo - 1e-6) | (smooth > hi + 1e-6))
+assert not bad.any(), f"smoothing left the data range at {int(bad.sum())} cells"
 
 def pack(a):
     return [None if not np.isfinite(v) else round(float(v), 3) for v in a.ravel()]

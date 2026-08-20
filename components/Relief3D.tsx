@@ -5,7 +5,7 @@ import DeckGL from "@deck.gl/react";
 import { OrbitView, COORDINATE_SYSTEM, AmbientLight, DirectionalLight, LightingEffect } from "@deck.gl/core";
 import { SolidPolygonLayer } from "@deck.gl/layers";
 import { RAMP, rampColor, scalePosition } from "@/lib/color";
-import { rgb, sortedPrices, type Relief } from "@/lib/relief";
+import { elevationBase, rgb, sortedPrices, type Relief } from "@/lib/relief";
 
 type Surface = "grid" | "counties";
 
@@ -62,7 +62,7 @@ export default function Relief3D({ src }: { src: string }) {
     };
   }, [data]);
 
-  const base = useMemo(() => (data ? sortedPrices(data)[0] : 0), [data]);
+  const base = useMemo(() => (data ? elevationBase(data) : 0), [data]);
 
   // grid cells as square footprints, centred so the model orbits about itself
   const cells = useMemo(() => {
