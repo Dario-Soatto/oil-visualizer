@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+.vercel
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts
+__pycache__/
+data/raw/
+data/fetch.log
+
+# pipeline intermediates; the app only reads data/counties.json
+data/*.json
+!data/counties.json

@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+:root {
+  --color-paper: #f1ece1;
+  --color-paper-warm: #ebe5d6;
+  --color-ink: #1a1a1a;
+  --color-ink-soft: #4a4a47;
+  --color-ink-mute: #8a8a85;
+  --color-rule: #d6cfbe;
+  --color-ochre: #b08930;
+  --color-vermillion: #a0392c;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-paper: var(--color-paper);
+  --color-paper-warm: var(--color-paper-warm);
+  --color-ink: var(--color-ink);
+  --color-ink-soft: var(--color-ink-soft);
+  --color-ink-mute: var(--color-ink-mute);
+  --color-rule: var(--color-rule);
+  --color-ochre: var(--color-ochre);
+  --color-vermillion: var(--color-vermillion);
+  --font-mono: var(--font-jetbrains-mono);
+  --font-serif: var(--font-newsreader);
+}
+
+html {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-feature-settings: "ss01", "cv11";
+}
+
+::selection {
+  background: var(--color-vermillion);
+  color: var(--color-paper);
+}
+
+/* ---- map -------------------------------------------------------------- */
+/* Each county carries its own colour as --f, computed from its own price at
+   build time, so 3,142 nodes never get recoloured at runtime. */
+.county {
+  fill: var(--f, var(--color-paper-warm));
+  stroke: color-mix(in oklab, var(--color-ink) 14%, transparent);
+  stroke-width: 0.22;
+  vector-effect: non-scaling-stroke;
+}
+.county.no-data {
+  fill: url(#hatch);
+}
+/* sourced from the semi-annual Alaska survey, not AAA's daily feed */
+.county.survey {
+  stroke: color-mix(in oklab, var(--color-ink) 55%, transparent);
+  stroke-width: 0.5;
+  stroke-dasharray: 2 1.4;
+}
+.county:hover {
+  stroke: var(--color-ink);
+  stroke-width: 1.1;
+}
+
+.state-line {
+  fill: none;
+  stroke: color-mix(in oklab, var(--color-ink) 30%, transparent);
+  stroke-width: 0.7;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
