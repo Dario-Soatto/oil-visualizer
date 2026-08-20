@@ -5,7 +5,7 @@ import DeckGL from "@deck.gl/react";
 import { OrbitView, COORDINATE_SYSTEM, AmbientLight, DirectionalLight, LightingEffect } from "@deck.gl/core";
 import { SolidPolygonLayer } from "@deck.gl/layers";
 import { RAMP, rampColor, scalePosition } from "@/lib/color";
-import { elevationBase, rgb, sortedPrices, type Relief } from "@/lib/relief";
+import { elevationBase, rgb, type Relief } from "@/lib/relief";
 
 type Surface = "grid" | "counties";
 
@@ -46,10 +46,11 @@ export default function Relief3D({ src }: { src: string }) {
     };
   }, [src]);
 
-  // shared price -> colour scale, identical to the 2D map
+  // price -> colour, ranked against the same county domain the 2D map uses,
+  // so both surfaces here and the flat map agree on every value
   const scale = useMemo(() => {
     if (!data) return null;
-    const sorted = sortedPrices(data);
+    const sorted = data.domain;
     const cache = new Map<number, [number, number, number]>();
     return (p: number): [number, number, number] => {
       const k = Math.round(p * 1000);

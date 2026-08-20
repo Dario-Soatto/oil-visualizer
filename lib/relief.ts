@@ -18,6 +18,9 @@ export interface ReliefGrid {
 export interface Relief {
   w: number;
   h: number;
+  /** Canonical colour domain: one price per county, identical to the flat map's.
+   *  Both 3D surfaces rank against this so a price is one colour app-wide. */
+  domain: number[];
   counties: ReliefCounty[];
   grid: ReliefGrid;
 }
@@ -44,9 +47,3 @@ export function elevationBase(r: Relief): number {
   return isFinite(lo) ? lo : 0;
 }
 
-/** Sorted price list for the shared colour scale, from whichever surface is up. */
-export function sortedPrices(r: Relief): number[] {
-  const v: number[] = [];
-  for (const p of r.grid.raw) if (p != null) v.push(p);
-  return v.sort((a, b) => a - b);
-}

@@ -145,8 +145,14 @@ assert not bad.any(), f"smoothing left the data range at {int(bad.sum())} cells"
 def pack(a):
     return [None if not np.isfinite(v) else round(float(v), 3) for v in a.ravel()]
 
+# The canonical colour domain, identical to the one the flat map builds: one
+# value per priced county. Both 3D surfaces rank against this, so a given price
+# is the same colour everywhere in the app. Ranking the grid against itself
+# would skew it -- big western counties are expensive and occupy many cells.
+domain = sorted(c["p"] for c in prices["counties"] if c["p"] is not None)
+
 out = {
-    "w": W, "h": H,
+    "w": W, "h": H, "domain": domain,
     "counties": counties_out,
     "grid": {"cell": CELL, "gw": gw, "gh": gh,
              "raw": pack(price), "smooth": pack(smooth),
@@ -158,3 +164,5 @@ sz = len(open("public/relief.json").read())
 print(f"wrote public/relief.json  {sz/1e6:.2f} MB")
 v = price[np.isfinite(price)]
 print(f"grid price range ${v.min():.2f}-${v.max():.2f}")
+print(f"colour domain: {len(domain)} county prices "
+      f"${domain[0]:.3f}-${domain[-1]:.3f}")
