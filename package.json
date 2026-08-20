@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "tsc --noEmit && next build",
     "start": "next start",
     "lint": "next lint",
-    "data": "python3 pipeline/fetch_prices.py && python3 pipeline/join.py && python3 pipeline/fetch_alaska.py && python3 pipeline/build_data.py"
+    "data": "python3 pipeline/fetch_prices.py && python3 pipeline/join.py && python3 pipeline/fetch_alaska.py && python3 pipeline/build_data.py",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@deck.gl/core": "^9.3.10",
