@@ -10,6 +10,9 @@
     "data": "python3 pipeline/fetch_prices.py && python3 pipeline/join.py && python3 pipeline/fetch_alaska.py && python3 pipeline/build_data.py"
   },
   "dependencies": {
+    "@deck.gl/core": "^9.3.10",
+    "@deck.gl/layers": "^9.3.10",
+    "@deck.gl/react": "^9.3.10",
     "next": "^16.3.1",
     "react": "19.1.1",
     "react-dom": "19.1.1"
