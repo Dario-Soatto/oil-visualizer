@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import HoverCard, { type HoverInfo } from "./HoverCard";
 
 interface Tick {
   t: number;
@@ -15,13 +16,6 @@ interface Props {
   ticks: Tick[];
 }
 
-interface Hover {
-  name: string;
-  state: string;
-  price: string | null;
-  note: string | null;
-}
-
 const MIN_K = 1;
 // Paths are rounded to 0.1 viewBox units, so past ~16x the rounding shows.
 const MAX_K = 16;
@@ -29,7 +23,7 @@ const MAX_K = 16;
 export default function MapView({ viewBox, children, stateLines, gradient, ticks }: Props) {
   const wrap = useRef<HTMLDivElement>(null);
   const [view, setView] = useState({ k: 1, x: 0, y: 0 });
-  const [hover, setHover] = useState<Hover | null>(null);
+  const [hover, setHover] = useState<HoverInfo | null>(null);
   const drag = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
   const [panning, setPanning] = useState(false);
 
@@ -95,15 +89,18 @@ export default function MapView({ viewBox, children, stateLines, gradient, ticks
       return;
     }
     const t = e.target as SVGElement;
-    if (!t.classList?.contains("county")) {
+    if (!el || !t.classList?.contains("county")) {
       setHover(null);
       return;
     }
+    const r = el.getBoundingClientRect();
     setHover({
       name: t.dataset.n ?? "",
       state: t.dataset.s ?? "",
-      price: t.dataset.p ?? null,
+      price: t.dataset.p != null ? Number(t.dataset.p) : null,
       note: t.dataset.note ?? null,
+      x: e.clientX - r.left,
+      y: e.clientY - r.top,
     });
   };
 
@@ -196,28 +193,16 @@ export default function MapView({ viewBox, children, stateLines, gradient, ticks
         </div>
       </div>
 
-      {/* readout: the hovered county, or the resting hint */}
-      <div className="pointer-events-none absolute left-3 bottom-3 text-[10px] tracking-wider text-[var(--color-ink-soft)] bg-[var(--color-paper)]/90 px-2 py-1 border border-[var(--color-rule)] min-h-6 max-w-[420px] flex items-center gap-2">
-        {hover ? (
-          <>
-            <span className="text-[var(--color-ink-mute)]">{hover.state}</span>
-            <span>{hover.name}</span>
-            {hover.price ? (
-              <span className="text-[var(--color-ink)] tabular-nums">
-                ${Number(hover.price).toFixed(2)}
-              </span>
-            ) : (
-              <span className="text-[var(--color-ink-mute)]">no price reported</span>
-            )}
-            {hover.note && (
-              <span className="text-[var(--color-ink-mute)]">&middot; {hover.note}</span>
-            )}
-          </>
-        ) : (
-          <span className="text-[var(--color-ink-mute)]">
-            hover a county for its price
-          </span>
-        )}
+      {hover && (
+        <HoverCard
+          info={hover}
+          frameW={wrap.current?.clientWidth ?? 0}
+          frameH={wrap.current?.clientHeight ?? 0}
+        />
+      )}
+
+      <div className="pointer-events-none absolute left-3 bottom-3 text-[10px] tracking-wider text-[var(--color-ink-mute)] bg-[var(--color-paper)]/90 px-2 py-1 border border-[var(--color-rule)]">
+        scroll to zoom &middot; drag to pan
       </div>
 
       {/* legend */}

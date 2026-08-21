@@ -105,9 +105,6 @@ export default function Page() {
               </p>
             </div>
           </details>
-          <span className="text-[10px] tracking-wider text-[var(--color-ink-mute)]">
-            scroll to zoom &middot; drag to pan
-          </span>
         </div>
         <MapView
           viewBox={`0 0 ${data.w} ${data.h}`}

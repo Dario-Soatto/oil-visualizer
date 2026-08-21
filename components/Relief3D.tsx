@@ -12,6 +12,7 @@ import {
 import { SolidPolygonLayer } from "@deck.gl/layers";
 import { RAMP, rampColor, scalePosition } from "@/lib/color";
 import { elevationBase, rgb, type Relief } from "@/lib/relief";
+import HoverCard, { type HoverInfo } from "./HoverCard";
 
 // Matte, ambient-heavy lighting: this should read as a plaster relief model on
 // paper, not a glossy WebGL demo.
@@ -30,22 +31,12 @@ const MATERIAL = {
   specularColor: [40, 36, 30] as [number, number, number],
 };
 
-interface Hover {
-  n: string;
-  s: string;
-  p: number;
-  x: number;
-  y: number;
-}
-
-const TIP_W = 190;
-const TIP_H = 96;
 
 export default function Relief3D({ src }: { src: string }) {
   const [data, setData] = useState<Relief | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [exag, setExag] = useState(45);
-  const [hover, setHover] = useState<Hover | null>(null);
+  const [hover, setHover] = useState<HoverInfo | null>(null);
   const [ready, setReady] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
 
@@ -87,7 +78,13 @@ export default function Relief3D({ src }: { src: string }) {
     if (!data) return [];
     const cx = data.w / 2;
     const cy = data.h / 2;
-    const out: { poly: [number, number][]; p: number; n: string; s: string }[] = [];
+    const out: {
+      poly: [number, number][];
+      p: number;
+      n: string;
+      s: string;
+      note: string | null;
+    }[] = [];
     for (const c of data.counties) {
       if (c.p == null) continue;
       for (const ring of c.r) {
@@ -97,6 +94,7 @@ export default function Relief3D({ src }: { src: string }) {
           p: c.p,
           n: c.n,
           s: c.s,
+          note: c.note ?? null,
         });
       }
     }
@@ -122,12 +120,6 @@ export default function Relief3D({ src }: { src: string }) {
       }),
     ];
   }, [data, scale, polys, exag, base]);
-
-  // keep the tooltip inside the frame near the right and bottom edges
-  const fw = wrap.current?.clientWidth ?? 0;
-  const fh = wrap.current?.clientHeight ?? 0;
-  const tx = hover ? (hover.x + TIP_W + 16 > fw ? hover.x - TIP_W - 16 : hover.x + 16) : 0;
-  const ty = hover ? (hover.y + TIP_H + 16 > fh ? hover.y - TIP_H - 16 : hover.y + 16) : 0;
 
   const label = "text-[10px] tracking-widest uppercase text-[var(--color-ink-mute)]";
 
@@ -170,9 +162,18 @@ export default function Relief3D({ src }: { src: string }) {
             parameters={{ cullMode: "none" }}
             getCursor={() => "grab"}
             onHover={(info) => {
-              const o = info.object as { p?: number; n?: string; s?: string } | null;
+              const o = info.object as
+                | { p?: number; n?: string; s?: string; note?: string | null }
+                | null;
               if (o && o.p != null && info.x != null && info.y != null) {
-                setHover({ n: o.n ?? "", s: o.s ?? "", p: o.p, x: info.x, y: info.y });
+                setHover({
+                  name: o.n ?? "",
+                  state: o.s ?? "",
+                  price: o.p,
+                  note: o.note ?? null,
+                  x: info.x,
+                  y: info.y,
+                });
               } else {
                 setHover(null);
               }
@@ -186,20 +187,11 @@ export default function Relief3D({ src }: { src: string }) {
         )}
 
         {hover && (
-          <div
-            className="pointer-events-none absolute z-10 bg-[var(--color-paper)] border border-[var(--color-rule)] px-2.5 py-2"
-            style={{ left: tx, top: ty, width: TIP_W }}
-          >
-            <div className="font-serif text-[15px] leading-tight text-[var(--color-ink)]">
-              {hover.n}
-            </div>
-            <div className="text-[10px] tracking-widest uppercase text-[var(--color-ink-mute)] mb-1.5">
-              {hover.s}
-            </div>
-            <div className="font-serif text-[22px] leading-none tabular-nums text-[var(--color-ink)]">
-              ${hover.p.toFixed(2)}
-            </div>
-          </div>
+          <HoverCard
+            info={hover}
+            frameW={wrap.current?.clientWidth ?? 0}
+            frameH={wrap.current?.clientHeight ?? 0}
+          />
         )}
 
         <div className="pointer-events-none absolute left-3 bottom-3 text-[10px] tracking-wider text-[var(--color-ink-mute)] bg-[var(--color-paper)]/90 px-2 py-1 border border-[var(--color-rule)]">

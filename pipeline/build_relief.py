@@ -69,7 +69,10 @@ for g in topo["objects"]["counties"]["geometries"]:
     rg = rings_of(unary_union(polys), SIMPLIFY)
     if not rg:
         continue
-    counties_out.append({"n": meta["n"], "s": meta["s"], "p": meta["p"], "r": rg})
+    rec = {"n": meta["n"], "s": meta["s"], "p": meta["p"], "r": rg}
+    if meta.get("note"):
+        rec["note"] = meta["note"]          # provenance, shown on hover in both views
+    counties_out.append(rec)
 
 # The canonical colour domain, identical to the one the flat map builds: one
 # value per priced county, so a price is the same colour in both views.

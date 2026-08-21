@@ -2,6 +2,7 @@ export interface ReliefCounty {
   n: string;
   s: string;
   p: number | null;
+  note?: string | null;
   r: number[][][]; // simplified exterior rings, projected Albers px
 }
 
