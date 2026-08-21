@@ -5,10 +5,16 @@ Retail gasoline price for every US county that has a reported figure — 3,115 o
 Albers USA composite projection. Every county is coloured from its own price;
 there are no classes.
 
-Next.js App Router + TypeScript + Tailwind v4. No mapping library: the
-projection and the SVG paths are precomputed by a small Python pipeline, so the
-browser ships static markup and the map paints without a fetch or a hydration
-pass.
+Two views on one page, toggled: the flat choropleth, and a relief where each
+county is extruded by its price. Both rank against the same colour domain, so a
+price is the same colour in either.
+
+Next.js App Router + TypeScript + Tailwind v4. The flat map uses no mapping
+library at all — the projection and the SVG paths are precomputed by a small
+Python pipeline, so the browser ships static markup and it paints without a
+fetch or a hydration pass. The relief uses deck.gl, lazily imported on first
+toggle so the default view never pays for a renderer it does not use (initial
+client JS stays at ~143 KB brotli; deck.gl's ~150 KB arrives only on demand).
 
 Styling follows the house system shared by `political-economy/midterms-2026` and
 `political-economy/catalog` — the same paper/ink/rule tokens, JetBrains Mono for
@@ -34,13 +40,14 @@ npm install && npm run dev
 ## Refreshing the data
 
 The pipeline is Python 3 and needs `requests` and `shapely`. It writes
-`data/counties.json`, which is the only artifact the app reads.
+`data/counties.json` (read at build time) and `public/relief.json` (fetched by
+the relief view at runtime, so it must be deployed).
 
 ```bash
 npm run data
 ```
 
-That runs four stages in order:
+That runs five stages in order:
 
 | Stage | What it does |
 |---|---|
@@ -48,6 +55,7 @@ That runs four stages in order:
 | `pipeline/join.py` | Joins county names to Census FIPS. Emits an explicit unmatched/conflict report rather than silently dropping rows. |
 | `pipeline/fetch_alaska.py` | Pulls the Alaska DCCED community fuel survey and aggregates it to boroughs by point-in-polygon. |
 | `pipeline/build_data.py` | Projects geometry to SVG paths and merges every source into `data/counties.json`. |
+| `pipeline/build_relief.py` | Projects the county outlines for the 3D relief into `public/relief.json`, with the shared colour domain. |
 
 Re-running is safe: stage 1 serves from `data/raw/` unless you clear it.
 

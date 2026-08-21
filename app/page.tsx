@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import MapView from "@/components/MapView";
+import AtlasViews from "@/components/AtlasViews";
 import { median, money, type MapData } from "@/lib/bins";
 import { gradientCss, RAMP, rampColor, scalePosition, valueAtPosition } from "@/lib/color";
 
@@ -106,14 +106,15 @@ export default function Page() {
             </div>
           </details>
         </div>
-        <MapView
+        <AtlasViews
           viewBox={`0 0 ${data.w} ${data.h}`}
           stateLines={stateLines}
           gradient={gradientCss(RAMP)}
           ticks={ticks}
+          reliefSrc="/relief.json"
         >
           {paths}
-        </MapView>
+        </AtlasViews>
       </section>
     </div>
   );

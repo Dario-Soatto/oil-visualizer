@@ -8,5 +8,9 @@ const nextConfig = {
     // the `build` script, where `tsc --noEmit` runs first and deterministically.
     ignoreBuildErrors: true,
   },
+  async redirects() {
+    // /relief was its own route before the two views were consolidated
+    return [{ source: "/relief", destination: "/", permanent: false }];
+  },
 };
 export default nextConfig;
