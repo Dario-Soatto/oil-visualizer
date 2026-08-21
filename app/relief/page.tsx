@@ -28,10 +28,12 @@ export default function ReliefPage() {
           Height is price. 86% of the variance in US gasoline prices sits{" "}
           <em>between</em> states rather than within them, so the real shape of this
           data is a staircase &mdash; plateaus with cliffs at the state lines &mdash;
-          not rolling hills. The smoothing is deliberately state-clipped: cells only
-          ever blend with cells in the same state, so the plateaus soften into terrain
-          while the border cliffs stay vertical. Vertical scale is exaggerated, as on
-          any relief model.
+          not rolling hills. Nothing here is interpolated: every column is one
+          county at its own reported price. Note that footprint is land area, not
+          population &mdash; the largest 16% of counties cover half the map, so the
+          empty western ones carry more visual weight than the dense counties where
+          most of the fuel is actually sold. Vertical scale is exaggerated, as on any
+          relief model.
         </p>
       </section>
     </div>

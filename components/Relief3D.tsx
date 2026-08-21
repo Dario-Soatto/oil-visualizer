@@ -2,12 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import DeckGL from "@deck.gl/react";
-import { OrbitView, COORDINATE_SYSTEM, AmbientLight, DirectionalLight, LightingEffect } from "@deck.gl/core";
+import {
+  OrbitView,
+  COORDINATE_SYSTEM,
+  AmbientLight,
+  DirectionalLight,
+  LightingEffect,
+} from "@deck.gl/core";
 import { SolidPolygonLayer } from "@deck.gl/layers";
 import { RAMP, rampColor, scalePosition } from "@/lib/color";
 import { elevationBase, rgb, type Relief } from "@/lib/relief";
-
-type Surface = "grid" | "counties";
 
 // Matte, ambient-heavy lighting: this should read as a plaster relief model on
 // paper, not a glossy WebGL demo.
@@ -19,15 +23,29 @@ const lighting = new LightingEffect({
     direction: [-1.2, -2.4, -1.6],
   }),
 });
-const MATERIAL = { ambient: 0.6, diffuse: 0.65, shininess: 8, specularColor: [40, 36, 30] as [number, number, number] };
+const MATERIAL = {
+  ambient: 0.6,
+  diffuse: 0.65,
+  shininess: 8,
+  specularColor: [40, 36, 30] as [number, number, number],
+};
+
+interface Hover {
+  n: string;
+  s: string;
+  p: number;
+  x: number;
+  y: number;
+}
+
+const TIP_W = 190;
+const TIP_H = 96;
 
 export default function Relief3D({ src }: { src: string }) {
   const [data, setData] = useState<Relief | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [surface, setSurface] = useState<Surface>("grid");
-  const [smooth, setSmooth] = useState(true);
   const [exag, setExag] = useState(45);
-  const [hover, setHover] = useState<string | null>(null);
+  const [hover, setHover] = useState<Hover | null>(null);
   const [ready, setReady] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
 
@@ -46,8 +64,8 @@ export default function Relief3D({ src }: { src: string }) {
     };
   }, [src]);
 
-  // price -> colour, ranked against the same county domain the 2D map uses,
-  // so both surfaces here and the flat map agree on every value
+  // price -> colour, ranked against the same county domain the flat map uses,
+  // so the two views agree on every value
   const scale = useMemo(() => {
     if (!data) return null;
     const sorted = data.domain;
@@ -65,37 +83,7 @@ export default function Relief3D({ src }: { src: string }) {
 
   const base = useMemo(() => (data ? elevationBase(data) : 0), [data]);
 
-  // grid cells as square footprints, centred so the model orbits about itself
-  const cells = useMemo(() => {
-    if (!data) return [];
-    const { cell, gw, gh } = data.grid;
-    const src2 = smooth ? data.grid.smooth : data.grid.raw;
-    const cx = data.w / 2;
-    const cy = data.h / 2;
-    const out: { poly: [number, number][]; p: number; s: string }[] = [];
-    for (let j = 0; j < gh; j++) {
-      for (let i = 0; i < gw; i++) {
-        const p = src2[j * gw + i];
-        if (p == null) continue;
-        const x = i * cell - cx;
-        // negate y so north is up in the 3D scene
-        const y = -(j * cell - cy);
-        out.push({
-          poly: [
-            [x, y],
-            [x + cell, y],
-            [x + cell, y - cell],
-            [x, y - cell],
-          ],
-          p,
-          s: data.grid.states[data.grid.state[j * gw + i]] ?? "",
-        });
-      }
-    }
-    return out;
-  }, [data, smooth]);
-
-  const countyPolys = useMemo(() => {
+  const polys = useMemo(() => {
     if (!data) return [];
     const cx = data.w / 2;
     const cy = data.h / 2;
@@ -104,6 +92,7 @@ export default function Relief3D({ src }: { src: string }) {
       if (c.p == null) continue;
       for (const ring of c.r) {
         out.push({
+          // negate y so north is up in the 3D scene
           poly: ring.map(([x, y]) => [x - cx, -(y - cy)] as [number, number]),
           p: c.p,
           n: c.n,
@@ -116,80 +105,36 @@ export default function Relief3D({ src }: { src: string }) {
 
   const layers = useMemo(() => {
     if (!data || !scale) return [];
-    const common = {
-      extruded: true,
-      material: MATERIAL,
-      coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-      pickable: true,
-    };
-    if (surface === "grid") {
-      return [
-        new SolidPolygonLayer({
-          ...common,
-          id: `grid-${smooth ? "s" : "r"}`,
-          data: cells,
-          getPolygon: (d: (typeof cells)[number]) => d.poly,
-          getElevation: (d: (typeof cells)[number]) => (d.p - base) * exag,
-          getFillColor: (d: (typeof cells)[number]) => scale(d.p),
-          updateTriggers: { getElevation: [exag, base], getFillColor: [scale] },
-        }),
-      ];
-    }
     return [
       new SolidPolygonLayer({
-        ...common,
         id: "counties",
-        data: countyPolys,
-        getPolygon: (d: (typeof countyPolys)[number]) => d.poly,
-        getElevation: (d: (typeof countyPolys)[number]) => (d.p - base) * exag,
-        getFillColor: (d: (typeof countyPolys)[number]) => scale(d.p),
+        data: polys,
+        extruded: true,
+        material: MATERIAL,
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        pickable: true,
+        autoHighlight: true,
+        highlightColor: [26, 26, 26, 130] as [number, number, number, number],
+        getPolygon: (d: (typeof polys)[number]) => d.poly,
+        getElevation: (d: (typeof polys)[number]) => (d.p - base) * exag,
+        getFillColor: (d: (typeof polys)[number]) => scale(d.p),
         updateTriggers: { getElevation: [exag, base], getFillColor: [scale] },
       }),
     ];
-  }, [data, scale, surface, cells, countyPolys, exag, base, smooth]);
+  }, [data, scale, polys, exag, base]);
+
+  // keep the tooltip inside the frame near the right and bottom edges
+  const fw = wrap.current?.clientWidth ?? 0;
+  const fh = wrap.current?.clientHeight ?? 0;
+  const tx = hover ? (hover.x + TIP_W + 16 > fw ? hover.x - TIP_W - 16 : hover.x + 16) : 0;
+  const ty = hover ? (hover.y + TIP_H + 16 > fh ? hover.y - TIP_H - 16 : hover.y + 16) : 0;
 
   const label = "text-[10px] tracking-widest uppercase text-[var(--color-ink-mute)]";
-  const btn = (on: boolean) =>
-    `px-3 py-1.5 text-[11px] tracking-wider border border-[var(--color-rule)] transition-colors ${
-      on
-        ? "bg-[var(--color-ink)] text-[var(--color-paper)]"
-        : "bg-[var(--color-paper)] hover:bg-[var(--color-paper-warm)] text-[var(--color-ink-soft)]"
-    }`;
 
   return (
     <div>
       <div className="flex flex-wrap items-end gap-x-8 gap-y-4 mb-5">
-        <div className="flex flex-col gap-1.5">
-          <span className={label}>surface</span>
-          <div className="flex gap-px">
-            <button className={btn(surface === "grid")} onClick={() => setSurface("grid")}>
-              equal-area grid
-            </button>
-            <button className={btn(surface === "counties")} onClick={() => setSurface("counties")}>
-              true counties
-            </button>
-          </div>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <span className={label}>relief</span>
-          <div className="flex gap-px">
-            <button
-              className={btn(smooth)}
-              onClick={() => setSmooth(true)}
-              disabled={surface !== "grid"}
-            >
-              smoothed
-            </button>
-            <button
-              className={btn(!smooth)}
-              onClick={() => setSmooth(false)}
-              disabled={surface !== "grid"}
-            >
-              raw cells
-            </button>
-          </div>
-        </div>
-        <div className="flex flex-col gap-1.5 min-w-[200px]">
+        <div className="flex flex-col gap-1.5 min-w-[220px]">
           <span className={label}>vertical exaggeration &middot; {exag}&times;</span>
           <input
             type="range"
@@ -226,11 +171,11 @@ export default function Relief3D({ src }: { src: string }) {
             getCursor={() => "grab"}
             onHover={(info) => {
               const o = info.object as { p?: number; n?: string; s?: string } | null;
-              setHover(
-                o && o.p != null
-                  ? `${o.s ?? ""} ${o.n ?? ""} $${o.p.toFixed(2)}`.trim()
-                  : null,
-              );
+              if (o && o.p != null && info.x != null && info.y != null) {
+                setHover({ n: o.n ?? "", s: o.s ?? "", p: o.p, x: info.x, y: info.y });
+              } else {
+                setHover(null);
+              }
             }}
             style={{ position: "absolute", inset: "0" }}
           />
@@ -240,12 +185,25 @@ export default function Relief3D({ src }: { src: string }) {
           </div>
         )}
 
-        <div className="pointer-events-none absolute left-3 bottom-3 text-[10px] tracking-wider text-[var(--color-ink-soft)] bg-[var(--color-paper)]/90 px-2 py-1 border border-[var(--color-rule)] min-h-6 flex items-center">
-          {hover ?? (
-            <span className="text-[var(--color-ink-mute)]">
-              drag to orbit &middot; scroll to zoom &middot; hover for price
-            </span>
-          )}
+        {hover && (
+          <div
+            className="pointer-events-none absolute z-10 bg-[var(--color-paper)] border border-[var(--color-rule)] px-2.5 py-2"
+            style={{ left: tx, top: ty, width: TIP_W }}
+          >
+            <div className="font-serif text-[15px] leading-tight text-[var(--color-ink)]">
+              {hover.n}
+            </div>
+            <div className="text-[10px] tracking-widest uppercase text-[var(--color-ink-mute)] mb-1.5">
+              {hover.s}
+            </div>
+            <div className="font-serif text-[22px] leading-none tabular-nums text-[var(--color-ink)]">
+              ${hover.p.toFixed(2)}
+            </div>
+          </div>
+        )}
+
+        <div className="pointer-events-none absolute left-3 bottom-3 text-[10px] tracking-wider text-[var(--color-ink-mute)] bg-[var(--color-paper)]/90 px-2 py-1 border border-[var(--color-rule)]">
+          drag to orbit &middot; scroll to zoom
         </div>
       </div>
     </div>

@@ -1,30 +1,20 @@
-"""Geometry for the 3D / relief experiments.
+"""Geometry for the 3D relief view.
 
-Two surfaces, because they answer different questions:
+Emits the projected county outlines, extruded by price in the browser, plus the
+canonical colour domain so the 3D view and the flat map agree on every value.
 
-  counties -- the real polygons, extruded. Recognisable, but 16% of counties
-              cover 49% of the map, so huge empty western counties dominate the
-              frame and occlude everything behind them.
-  grid     -- equal-area square cells. Every column has the same footprint, so
-              height alone carries price. This is the honest one to read.
-
-The grid also ships a smoothed variant. 86% of price variance sits *between*
-states, so a plain blur would sand off the very feature that carries the signal.
-This blur is state-clipped: cells only ever mix with cells in the same state, so
-the plateaus soften into terrain while the border cliffs stay vertical.
+The equal-area grid that used to live here is gone with the surface toggle it
+fed; recover it from git (b6704d7) if the area-bias view is ever wanted again.
 """
-import json, sys
-import numpy as np
-from scipy import ndimage
-from shapely.geometry import Polygon, Point
-from shapely.strtree import STRtree
+import json
+
+from shapely.geometry import Polygon
 from shapely.ops import unary_union
 
 from geo import ensure_topology, albers_usa, decode_arcs, _ring_coords
 from join import STATE_FIPS
 
 W, H = 975.0, 610.0
-CELL = 6.0                 # px per grid cell in the 975x610 Albers frame
 SIMPLIFY = 0.6             # px tolerance for the extruded county outlines
 MIN_PART = 1.5             # drop polygon parts smaller than this (px^2)
 
@@ -41,7 +31,19 @@ def pick(f):
 
 price_by_fips = {c["f"]: c for c in prices["counties"]}
 
-records = []
+
+def rings_of(geom, tol):
+    g = geom.simplify(tol, preserve_topology=True)
+    gs = [g] if g.geom_type == "Polygon" else list(g.geoms)
+    out = []
+    for part in gs:
+        if part.is_empty or part.area < MIN_PART:
+            continue
+        out.append([[round(x, 1), round(y, 1)] for x, y in part.exterior.coords])
+    return out
+
+
+counties_out = []
 for g in topo["objects"]["counties"]["geometries"]:
     f = g["id"]
     if f[:2] not in STATE_FIPS:
@@ -64,105 +66,23 @@ for g in topo["objects"]["counties"]["geometries"]:
         polys.append(p)
     if not polys:
         continue
-    records.append({"f": f, "n": meta["n"], "s": meta["s"], "p": meta["p"],
-                    "geom": unary_union(polys)})
-
-print(f"counties with geometry: {len(records)}")
-
-# ---- extruded county outlines -------------------------------------------
-def rings_of(geom, tol):
-    g = geom.simplify(tol, preserve_topology=True)
-    gs = [g] if g.geom_type == "Polygon" else list(g.geoms)
-    out = []
-    for part in gs:
-        if part.is_empty or part.area < MIN_PART:
-            continue
-        out.append([[round(x, 1), round(y, 1)] for x, y in part.exterior.coords])
-    return out
-
-counties_out = []
-for r in records:
-    rg = rings_of(r["geom"], SIMPLIFY)
+    rg = rings_of(unary_union(polys), SIMPLIFY)
     if not rg:
         continue
-    counties_out.append({"n": r["n"], "s": r["s"], "p": r["p"], "r": rg})
-print(f"county outlines emitted: {len(counties_out)}"
-      f"  ({sum(len(x) for c in counties_out for x in c['r']):,} vertices)")
-
-# ---- equal-area grid -----------------------------------------------------
-gw = int(np.ceil(W / CELL))
-gh = int(np.ceil(H / CELL))
-geoms = [r["geom"] for r in records]
-tree = STRtree(geoms)
-states = sorted({r["s"] for r in records})
-state_ix = {s: i for i, s in enumerate(states)}
-
-price = np.full((gh, gw), np.nan, dtype=np.float32)
-stidx = np.full((gh, gw), -1, dtype=np.int16)
-
-for j in range(gh):
-    for i in range(gw):
-        pt = Point((i + 0.5) * CELL, (j + 0.5) * CELL)
-        hits = tree.query(pt)
-        for h in hits:
-            r = records[int(h)]
-            if r["geom"].contains(pt):
-                price[j, i] = r["p"]
-                stidx[j, i] = state_ix[r["s"]]
-                break
-    if j % 25 == 0:
-        print(f"  rasterising row {j}/{gh}", file=sys.stderr)
-
-filled = int(np.isfinite(price).sum())
-print(f"grid {gw}x{gh} = {gw*gh:,} cells, {filled:,} land ({100*filled/(gw*gh):.0f}%)")
-
-# ---- state-clipped smoothing --------------------------------------------
-smooth = np.full_like(price, np.nan)
-# A cell belongs to a state even when nobody reports a price there (the 27
-# unpriced counties). Those must stay out of the average entirely -- folding
-# them in as zeros drags neighbours down toward $0 and the column goes below
-# the base plane.
-priced_mask = np.isfinite(price)
-for s, si in state_ix.items():
-    mask = (stidx == si) & priced_mask
-    if not mask.any():
-        continue
-    vals = np.where(mask, price, 0.0)
-    m = mask.astype(np.float32)
-    # normalised convolution: blur values and mask together, then divide, so
-    # cells never borrow from a neighbouring state across a border cliff
-    num = ndimage.gaussian_filter(vals, sigma=1.4, mode="constant")
-    den = ndimage.gaussian_filter(m, sigma=1.4, mode="constant")
-    with np.errstate(invalid="ignore", divide="ignore"):
-        sm = np.where(den > 1e-6, num / den, np.nan)
-    smooth[mask] = sm[mask]
-
-# a weighted average of in-state prices can never leave the input range
-lo, hi = np.nanmin(price), np.nanmax(price)
-bad = np.isfinite(smooth) & ((smooth < lo - 1e-6) | (smooth > hi + 1e-6))
-assert not bad.any(), f"smoothing left the data range at {int(bad.sum())} cells"
-
-def pack(a):
-    return [None if not np.isfinite(v) else round(float(v), 3) for v in a.ravel()]
+    counties_out.append({"n": meta["n"], "s": meta["s"], "p": meta["p"], "r": rg})
 
 # The canonical colour domain, identical to the one the flat map builds: one
-# value per priced county. Both 3D surfaces rank against this, so a given price
-# is the same colour everywhere in the app. Ranking the grid against itself
-# would skew it -- big western counties are expensive and occupy many cells.
+# value per priced county, so a price is the same colour in both views.
 domain = sorted(c["p"] for c in prices["counties"] if c["p"] is not None)
 
-out = {
-    "w": W, "h": H, "domain": domain,
-    "counties": counties_out,
-    "grid": {"cell": CELL, "gw": gw, "gh": gh,
-             "raw": pack(price), "smooth": pack(smooth),
-             "state": [int(v) for v in stidx.ravel()], "states": states},
-}
-# served to the client rather than bundled: the 3D routes fetch it
+out = {"w": W, "h": H, "domain": domain, "counties": counties_out}
+# served to the client rather than bundled: the 3D route fetches it
 json.dump(out, open("public/relief.json", "w"), separators=(",", ":"))
+
 sz = len(open("public/relief.json").read())
-print(f"wrote public/relief.json  {sz/1e6:.2f} MB")
-v = price[np.isfinite(price)]
-print(f"grid price range ${v.min():.2f}-${v.max():.2f}")
-print(f"colour domain: {len(domain)} county prices "
+priced = [c for c in counties_out if c["p"] is not None]
+print(f"county outlines: {len(counties_out)}  ({len(priced)} priced, "
+      f"{sum(len(x) for c in counties_out for x in c['r']):,} vertices)")
+print(f"colour domain  : {len(domain)} county prices "
       f"${domain[0]:.3f}-${domain[-1]:.3f}")
+print(f"wrote public/relief.json  {sz/1e6:.2f} MB")
