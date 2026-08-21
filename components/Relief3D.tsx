@@ -25,9 +25,12 @@ const lighting = new LightingEffect({
     direction: [-1.2, -2.4, -1.6],
   }),
 });
-// Fixed rather than adjustable: 50x is where the state plateaus and the border
-// cliffs both read without the tall western columns swallowing the frame.
-const EXAGGERATION = 50;
+// Height per dollar, in the same projected pixels the map is drawn in. There is
+// no meaningful 1:1 here -- the vertical axis is dollars and the horizontal is
+// map distance -- so this is chosen for legibility, not fidelity: 50 is where
+// the state plateaus and the border cliffs both read without the tall western
+// columns swallowing the frame.
+const PX_PER_DOLLAR = 50;
 
 const MATERIAL = {
   ambient: 0.6,
@@ -126,7 +129,7 @@ export default function Relief3D({
         autoHighlight: true,
         highlightColor: [26, 26, 26, 130] as [number, number, number, number],
         getPolygon: (d: (typeof polys)[number]) => d.poly,
-        getElevation: (d: (typeof polys)[number]) => (d.p - base) * EXAGGERATION,
+        getElevation: (d: (typeof polys)[number]) => (d.p - base) * PX_PER_DOLLAR,
         getFillColor: (d: (typeof polys)[number]) => scale(d.p),
         updateTriggers: { getElevation: [base], getFillColor: [scale] },
       }),
@@ -204,8 +207,7 @@ export default function Relief3D({
         at its own reported price. Note that footprint is land area, not population
         &mdash; the largest 16% of counties cover half the map, so the empty western
         ones carry more visual weight than the dense counties where most of the fuel
-        is actually sold. Vertical scale is exaggerated {EXAGGERATION}&times;, as on any
-        relief model.
+        is actually sold.
       </p>
     </div>
   );
