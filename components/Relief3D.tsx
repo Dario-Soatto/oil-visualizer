@@ -25,6 +25,10 @@ const lighting = new LightingEffect({
     direction: [-1.2, -2.4, -1.6],
   }),
 });
+// Fixed rather than adjustable: 50x is where the state plateaus and the border
+// cliffs both read without the tall western columns swallowing the frame.
+const EXAGGERATION = 50;
+
 const MATERIAL = {
   ambient: 0.6,
   diffuse: 0.65,
@@ -44,7 +48,6 @@ export default function Relief3D({
 }) {
   const [data, setData] = useState<Relief | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [exag, setExag] = useState(45);
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [ready, setReady] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
@@ -123,32 +126,15 @@ export default function Relief3D({
         autoHighlight: true,
         highlightColor: [26, 26, 26, 130] as [number, number, number, number],
         getPolygon: (d: (typeof polys)[number]) => d.poly,
-        getElevation: (d: (typeof polys)[number]) => (d.p - base) * exag,
+        getElevation: (d: (typeof polys)[number]) => (d.p - base) * EXAGGERATION,
         getFillColor: (d: (typeof polys)[number]) => scale(d.p),
-        updateTriggers: { getElevation: [exag, base], getFillColor: [scale] },
+        updateTriggers: { getElevation: [base], getFillColor: [scale] },
       }),
     ];
-  }, [data, scale, polys, exag, base]);
-
-  const label = "text-[10px] tracking-widest uppercase text-[var(--color-ink-mute)]";
+  }, [data, scale, polys, base]);
 
   return (
     <div>
-      <div className="flex flex-wrap items-end gap-x-8 gap-y-4 mb-5">
-        <div className="flex flex-col gap-1.5 min-w-[220px]">
-          <span className={label}>vertical exaggeration &middot; {exag}&times;</span>
-          <input
-            type="range"
-            min={0}
-            max={120}
-            step={1}
-            value={exag}
-            onChange={(e) => setExag(+e.target.value)}
-            className="w-full accent-[var(--color-vermillion)]"
-          />
-        </div>
-      </div>
-
       <div
         ref={wrap}
         className="relative border border-[var(--color-rule)] bg-[var(--color-paper-warm)]"
@@ -218,7 +204,8 @@ export default function Relief3D({
         at its own reported price. Note that footprint is land area, not population
         &mdash; the largest 16% of counties cover half the map, so the empty western
         ones carry more visual weight than the dense counties where most of the fuel
-        is actually sold. Vertical scale is exaggerated, as on any relief model.
+        is actually sold. Vertical scale is exaggerated {EXAGGERATION}&times;, as on any
+        relief model.
       </p>
     </div>
   );
