@@ -12,3 +12,11 @@ data/fetch.log
 # pipeline intermediates; the app only reads data/counties.json
 data/*.json
 !data/counties.json
+!data/history.json
+# 72 MB of archived captures; rebuildable, and the parsed result is committed
+data/wayback/raw/
+# raw CDX index; rebuilt in seconds with `--index`
+data/wayback/cdx.jsonl
+# transient run log and pre-aggregation intermediate
+data/wayback/fetch.log
+data/wayback/history_raw.json

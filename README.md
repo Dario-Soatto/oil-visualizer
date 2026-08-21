@@ -57,6 +57,37 @@ That runs five stages in order:
 | `pipeline/build_data.py` | Projects geometry to SVG paths and merges every source into `data/counties.json`. |
 | `pipeline/build_relief.py` | Projects the county outlines for the 3D relief into `public/relief.json`, with the shared colour domain. |
 
+## Historical backfill
+
+AAA's county payload carries only today's price — there is no history to ask it
+for. But the endpoint itself has been archived ~28,000 times since 2019, and
+each capture is one state's counties at that moment. `pipeline/backfill_history.py`
+reconstructs a weekly county-level series from the Internet Archive:
+
+```bash
+python3 pipeline/backfill_history.py --index   # enumerate captures, pick one per state-week
+python3 pipeline/backfill_history.py           # fetch, parse, join, emit data/history.json
+```
+
+It is resumable — every capture is cached under `data/wayback/raw/` (gitignored,
+~73 MB), so re-running costs nothing for what already landed. A full cold run is
+roughly 40 minutes at 5 workers.
+
+State is inferred from each payload's own county-name set rather than read off
+its `map_id`. The ids turn out to be stable (verified: zero disagreements with
+today's mapping across all 6,231 captures) but they are opaque WordPress ids, and
+a county roster identifies its state unambiguously regardless.
+
+**What it yields:** 87 weeks where at least 45 of 51 states were captured,
+spanning 2020-W15 to 2026-W34, covering 3,120 counties at 98.2% cell fill. The
+longest unbroken weekly run is 48 weeks (2024-W52 → 2025-W47). Coverage thins
+going back — 47 good weeks in 2025 against 2 in 2020 — because the archive
+sampled the site far more often in recent years.
+
+The result validates against reality: the April 2020 national median comes out at
+$1.75 (the COVID crash), and the final archived week matches the live feed to the
+cent (Dubois IN $3.29 vs $3.296; Harris TX $3.52 vs $3.55).
+
 Re-running is safe: stage 1 serves from `data/raw/` unless you clear it.
 
 ## Where the numbers come from
