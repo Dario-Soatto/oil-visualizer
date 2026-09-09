@@ -11,6 +11,11 @@ import { RAMP, rampColor, scalePosition } from "@/lib/color";
  * --f custom property on each path in place, which is far cheaper than
  * re-rendering 3,142 nodes.
  */
+// Responses are cached for a day, so a change to the payload's shape has to
+// change the URL or stale bodies keep arriving. Bump this whenever the
+// /api/map response gains or loses a field.
+const API_VERSION = 2;
+
 /** Provenance shown on hover, per row source. */
 const SOURCE_NOTE: Record<string, string | undefined> = {
   aaa: undefined,
@@ -31,7 +36,7 @@ export default function DateScrubber({
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const cache = useRef(
-    new Map<string, { fips: string[]; price: number[]; source: string[] }>(),
+    new Map<string, { fips: string[]; price: number[]; source?: string[] }>(),
   );
   const reqId = useRef(0);
 
@@ -47,13 +52,16 @@ export default function DateScrubber({
       if (!data) {
         setLoading(true);
         try {
-          const r = await fetch(`/api/map/${date}`);
+          const r = await fetch(`/api/map/${date}?v=${API_VERSION}`);
           if (!r.ok) throw new Error(String(r.status));
           data = (await r.json()) as {
             fips: string[];
             price: number[];
-            source: string[];
+            source?: string[];
           };
+          if (!Array.isArray(data.fips) || !Array.isArray(data.price)) {
+            throw new Error("malformed response");
+          }
           cache.current.set(date, data);
         } catch {
           if (!cancelled && my === reqId.current) setNote("could not load that date");
@@ -68,8 +76,9 @@ export default function DateScrubber({
       // on every frame. per-date: rank within this date, maximising contrast
       // but making dates incomparable.
       const domain = fixedScale ? pooled : [...data.price].sort((a, b) => a - b);
-      const byFips = new Map<string, { p: number; s: string }>();
-      data.fips.forEach((f, k) => byFips.set(f, { p: data!.price[k], s: data!.source[k] }));
+      const byFips = new Map<string, { p: number; s?: string }>();
+      const src = data.source;                     // absent on older cached bodies
+      data.fips.forEach((f, k) => byFips.set(f, { p: data!.price[k], s: src?.[k] }));
 
       const colour = new Map<number, string>();
       document.querySelectorAll<SVGPathElement>("path.county[data-f]").forEach((p) => {
@@ -94,7 +103,7 @@ export default function DateScrubber({
         }
         p.classList.remove("no-data");
         p.dataset.p = String(v.p);
-        const note = SOURCE_NOTE[v.s];
+        const note = v.s ? SOURCE_NOTE[v.s] : undefined;
         if (note) p.dataset.note = note;
         else delete p.dataset.note;
 
@@ -109,7 +118,10 @@ export default function DateScrubber({
       setNote(`${data.fips.length.toLocaleString()} counties reported`);
     }
 
-    paint();
+    paint().catch((err) => {
+      console.error("repaint failed", err);
+      if (!cancelled) setNote("could not draw that date");
+    });
     return () => {
       cancelled = true;
     };
