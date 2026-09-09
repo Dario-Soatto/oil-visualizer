@@ -3,6 +3,12 @@ import path from "node:path";
 import AtlasViews from "@/components/AtlasViews";
 import { median, money, type MapData } from "@/lib/bins";
 import { gradientCss, RAMP, rampColor, scalePosition, valueAtPosition } from "@/lib/color";
+import TrendChart from "@/components/TrendChart";
+import { coverage, nationalTrend } from "@/lib/db";
+
+// The map geometry is baked in; the trend comes from Postgres, so the page is
+// revalidated hourly rather than fully static.
+export const revalidate = 3600;
 
 // Read at build time; the map ships as static HTML so it paints without a fetch.
 function load(): MapData {
@@ -10,7 +16,7 @@ function load(): MapData {
   return JSON.parse(fs.readFileSync(p, "utf8")) as MapData;
 }
 
-export default function Page() {
+export default async function Page() {
   const data = load();
   const priced = data.counties.filter((c) => c.p !== null);
   const sorted = priced.map((c) => c.p as number).sort((a, b) => a - b);
@@ -37,6 +43,16 @@ export default function Page() {
     ? Math.floor((Date.now() - Date.parse(fetched + "T00:00:00Z")) / 86_400_000)
     : null;
   const stale = ageDays != null && ageDays > 8;
+
+  // If the database is unreachable the map must still render; the trend is an
+  // addition to the page, not a prerequisite for it.
+  let trend: Awaited<ReturnType<typeof nationalTrend>> = [];
+  let cov: Awaited<ReturnType<typeof coverage>> | null = null;
+  try {
+    [trend, cov] = await Promise.all([nationalTrend(), coverage()]);
+  } catch (e) {
+    console.error("trend unavailable:", e);
+  }
 
   const paths = data.counties.map((c) => {
     // only the Alaska survey is a different vintage; DC is the same daily AAA feed
@@ -133,6 +149,31 @@ export default function Page() {
           {paths}
         </AtlasViews>
       </section>
+
+      {trend.length > 1 && (
+        <section className="pb-12 border-t border-[var(--color-rule)] pt-8">
+          <div className="flex items-baseline justify-between mb-5 gap-4 flex-wrap">
+            <h2 className="text-xs tracking-widest uppercase text-[var(--color-ink-soft)]">
+              the national trend
+            </h2>
+            <span className="text-[10px] tracking-wider text-[var(--color-ink-mute)]">
+              median county price &middot; shaded band is the 10th&ndash;90th percentile
+            </span>
+          </div>
+          <div className="border border-[var(--color-rule)] bg-[var(--color-paper-warm)] px-4 py-4">
+            <TrendChart data={trend} />
+          </div>
+          {cov && (
+            <p className="mt-4 max-w-3xl text-[13px] leading-relaxed text-[var(--color-ink-soft)]">
+              {cov.rows.toLocaleString()} observations across {cov.counties.toLocaleString()}{" "}
+              counties and {cov.dates} dates, {cov.first} to {cov.last}. Everything before{" "}
+              {data.fetched} was reconstructed from archived copies of AAA&rsquo;s county
+              payload, sampled one capture per state-week; each daily refresh adds a point
+              from here on.
+            </p>
+          )}
+        </section>
+      )}
     </div>
   );
 }

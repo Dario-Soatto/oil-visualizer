@@ -59,6 +59,38 @@ Two stages:
 are libraries, not stages. `pipeline/palette.py` is the design tool that
 generated the colour ramp. `pipeline/backfill_history.py` is a one-off.
 
+## Database
+
+Prices are also written to a Neon Postgres (`oil-visualizer-db`, provisioned
+through Vercel's marketplace on the free tier), which is what backs the trend
+chart and the per-county history.
+
+```sql
+counties (fips, name, state)
+prices   (fips, observed, price, source)   -- PK (fips, observed)
+```
+
+`source` distinguishes a daily reading (`aaa` / `dc` / `ak`) from a weekly
+sample reconstructed out of the Internet Archive (`archive`). Archive rows land
+on the Monday of their ISO week, so nothing should read the slope between two
+adjacent points as a daily rate.
+
+```bash
+npx vercel env pull .env.local --environment=development   # get DATABASE_URL
+node --env-file=.env.local scripts/db.mjs migrate          # create tables
+node --env-file=.env.local scripts/db.mjs backfill         # load data/history.json
+node --env-file=.env.local scripts/db.mjs ingest           # load today's snapshot
+node --env-file=.env.local scripts/db.mjs stats            # what is in there
+```
+
+Currently 272,640 observations across 3,128 counties and 89 dates, 2020-04-06 to
+2026-09-08. `ingest` is idempotent — it upserts on `(fips, observed)`, so
+re-running a day overwrites rather than duplicates.
+
+The page reads the database through `lib/db.ts` and revalidates hourly. If the
+database is unreachable the trend section is omitted and the map still renders;
+the map's data is baked in at build time and never depends on Postgres.
+
 ## Running it on a schedule
 
 `.github/workflows/refresh-data.yml` runs the pipeline daily at 11:00 UTC and
@@ -81,6 +113,10 @@ half-empty map. Tune with `--min-states`.
 asserts county coverage, plausible price ranges, that the flat and relief views
 share a vintage and colour domain, that no relief county sits below the
 extrusion floor, and that the history stays ordered and gains the current week.
+
+**The database load is optional.** The ingest step is skipped unless
+`DATABASE_URL` is set as a repository secret, so the refresh keeps working
+whether or not the database is wired up.
 
 **The page states its own vintage.** `counties.json` carries a `fetched` date,
 shown next to the coverage line, and it turns red past eight days. An undated map

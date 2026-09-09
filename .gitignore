@@ -20,3 +20,4 @@ data/wayback/cdx.jsonl
 # transient run log and pre-aggregation intermediate
 data/wayback/fetch.log
 data/wayback/history_raw.json
+.env*.local

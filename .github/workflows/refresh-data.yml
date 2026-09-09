@@ -17,8 +17,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      # job-level so the ingest step's `if` can test whether it is set at all
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
 
       - uses: actions/setup-python@v5
         with:
@@ -26,11 +34,18 @@ jobs:
           cache: pip
 
       - run: pip install -r requirements.txt
+      - run: npm ci
 
       # Both stages exit non-zero on trouble -- fetch below 45 states, build on
       # any failed artifact check -- so the job stops before committing.
       - name: Run the pipeline
         run: npm run data
+
+      # Skipped until DATABASE_URL is set as a repo secret, so the refresh still
+      # works before the database is wired up.
+      - name: Load the snapshot into Postgres
+        if: ${{ env.DATABASE_URL != '' }}
+        run: node scripts/db.mjs ingest
 
       - name: Commit if anything changed
         run: |
