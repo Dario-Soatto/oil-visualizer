@@ -1,0 +1,156 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { RAMP, rampColor, scalePosition } from "@/lib/color";
+
+/**
+ * Scrub the map back through every date in the database.
+ *
+ * The geometry never moves, so nothing is re-fetched but the numbers: each date
+ * is ~60 KB of prices against the map's 1.2 MB of paths. Recolouring sets the
+ * --f custom property on each path in place, which is far cheaper than
+ * re-rendering 3,142 nodes.
+ */
+export default function DateScrubber({
+  dates,
+  pooled,
+  liveDate,
+}: {
+  dates: { date: string; n: number }[];
+  pooled: number[];
+  liveDate: string | null;
+}) {
+  const [i, setI] = useState(dates.length - 1);
+  const [fixedScale, setFixedScale] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const cache = useRef(new Map<string, { fips: string[]; price: number[] }>());
+  const live = useRef<Map<string, string> | null>(null);
+  const reqId = useRef(0);
+
+  const current = dates[i];
+
+  // remember the server-rendered colours so "today" can be restored exactly
+  useEffect(() => {
+    if (live.current) return;
+    const m = new Map<string, string>();
+    document.querySelectorAll<SVGPathElement>("path.county[data-f]").forEach((p) => {
+      const f = p.getAttribute("data-f");
+      if (f) m.set(f, p.style.getPropertyValue("--f"));
+    });
+    live.current = m;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const my = ++reqId.current;
+
+    async function paint() {
+      const date = current.date;
+      // the live snapshot is already painted; restoring is instant
+      if (liveDate && date === liveDate && live.current?.size) {
+        document.querySelectorAll<SVGPathElement>("path.county[data-f]").forEach((p) => {
+          const f = p.getAttribute("data-f");
+          const c = f ? live.current!.get(f) : undefined;
+          if (c) p.style.setProperty("--f", c);
+        });
+        setNote(null);
+        return;
+      }
+
+      let data = cache.current.get(date);
+      if (!data) {
+        setLoading(true);
+        try {
+          const r = await fetch(`/api/map/${date}`);
+          if (!r.ok) throw new Error(String(r.status));
+          data = (await r.json()) as { fips: string[]; price: number[] };
+          cache.current.set(date, data);
+        } catch {
+          if (!cancelled && my === reqId.current) setNote("could not load that date");
+          return;
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      }
+      if (cancelled || my !== reqId.current) return;
+
+      // fixed: rank against every date pooled, so colour means the same thing
+      // on every frame. per-date: rank within this date, maximising contrast
+      // but making dates incomparable.
+      const domain = fixedScale ? pooled : [...data.price].sort((a, b) => a - b);
+      const byFips = new Map<string, number>();
+      data.fips.forEach((f, k) => byFips.set(f, data!.price[k]));
+
+      const colour = new Map<number, string>();
+      document.querySelectorAll<SVGPathElement>("path.county[data-f]").forEach((p) => {
+        const f = p.getAttribute("data-f");
+        const v = f ? byFips.get(f) : undefined;
+        if (v == null) {
+          p.style.setProperty("--f", "transparent");
+          return;
+        }
+        const key = Math.round(v * 1000);
+        let c = colour.get(key);
+        if (!c) {
+          c = rampColor(scalePosition(v, domain), RAMP);
+          colour.set(key, c);
+        }
+        p.style.setProperty("--f", c);
+      });
+      setNote(`${data.fips.length.toLocaleString()} counties reported`);
+    }
+
+    paint();
+    return () => {
+      cancelled = true;
+    };
+  }, [i, fixedScale, current.date, liveDate, pooled]);
+
+  const btn = (on: boolean) =>
+    `px-2.5 py-1 text-[10px] tracking-wider border border-[var(--color-rule)] transition-colors ${
+      on
+        ? "bg-[var(--color-ink)] text-[var(--color-paper)]"
+        : "bg-[var(--color-paper)] hover:bg-[var(--color-paper-warm)] text-[var(--color-ink-soft)]"
+    }`;
+
+  return (
+    <div className="flex flex-wrap items-end gap-x-8 gap-y-3 mb-4">
+      <div className="flex flex-col gap-1.5 flex-1 min-w-[280px]">
+        <span className="text-[10px] tracking-widest uppercase text-[var(--color-ink-mute)]">
+          date &middot;{" "}
+          <span className="text-[var(--color-ink)]">{current.date}</span>
+          {loading && <span className="text-[var(--color-ink-mute)]"> &middot; loading…</span>}
+          {!loading && note && <span className="text-[var(--color-ink-mute)]"> &middot; {note}</span>}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={dates.length - 1}
+          step={1}
+          value={i}
+          onChange={(e) => setI(+e.target.value)}
+          className="w-full accent-[var(--color-vermillion)]"
+          aria-label="Observation date"
+        />
+        <div className="flex justify-between text-[9px] tracking-wider text-[var(--color-ink-mute)] tabular-nums">
+          <span>{dates[0].date}</span>
+          <span>{dates[dates.length - 1].date}</span>
+        </div>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <span className="text-[10px] tracking-widest uppercase text-[var(--color-ink-mute)]">
+          colour scale
+        </span>
+        <div className="flex gap-px">
+          <button className={btn(fixedScale)} onClick={() => setFixedScale(true)}>
+            across all dates
+          </button>
+          <button className={btn(!fixedScale)} onClick={() => setFixedScale(false)}>
+            this date only
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

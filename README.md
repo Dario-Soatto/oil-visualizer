@@ -87,6 +87,21 @@ Currently 272,640 observations across 3,128 counties and 89 dates, 2020-04-06 to
 2026-09-08. `ingest` is idempotent — it upserts on `(fips, observed)`, so
 re-running a day overwrites rather than duplicates.
 
+**Scrubbing back through time.** A date slider above the map replays every date
+in the database. The geometry never moves, so only the numbers travel — about
+38 KB per date against the map's 1.2 MB of paths — and recolouring sets the
+`--f` custom property on each path in place rather than re-rendering 3,142 nodes.
+
+The colour scale defaults to *fixed across all dates*, ranked against a
+1,001-point quantile summary of the pooled distribution. This matters: if each
+date re-ranked against itself, every frame would look identical and scrubbing
+would show nothing. Fixed, April 2020 renders almost entirely pale (median
+$1.75, the COVID collapse) and today renders dark ($3.91). A "this date only"
+toggle restores per-date ranking when you want maximum contrast within one day
+instead of comparability across them.
+
+The relief view still shows current prices; the scrubber only drives the flat map.
+
 The page reads the database through `lib/db.ts` and revalidates hourly. If the
 database is unreachable the trend section is omitted and the map still renders;
 the map's data is baked in at build time and never depends on Postgres.

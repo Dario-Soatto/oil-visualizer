@@ -4,7 +4,8 @@ import AtlasViews from "@/components/AtlasViews";
 import { median, money, type MapData } from "@/lib/bins";
 import { gradientCss, RAMP, rampColor, scalePosition, valueAtPosition } from "@/lib/color";
 import TrendChart from "@/components/TrendChart";
-import { coverage, nationalTrend } from "@/lib/db";
+import { availableDates, coverage, nationalTrend, pooledQuantiles } from "@/lib/db";
+import DateScrubber from "@/components/DateScrubber";
 
 // The map geometry is baked in; the trend comes from Postgres, so the page is
 // revalidated hourly rather than fully static.
@@ -48,10 +49,14 @@ export default async function Page() {
   // addition to the page, not a prerequisite for it.
   let trend: Awaited<ReturnType<typeof nationalTrend>> = [];
   let cov: Awaited<ReturnType<typeof coverage>> | null = null;
+  let dates: Awaited<ReturnType<typeof availableDates>> = [];
+  let pooled: number[] = [];
   try {
-    [trend, cov] = await Promise.all([nationalTrend(), coverage()]);
+    [trend, cov, dates, pooled] = await Promise.all([
+      nationalTrend(), coverage(), availableDates(), pooledQuantiles(),
+    ]);
   } catch (e) {
-    console.error("trend unavailable:", e);
+    console.error("history unavailable:", e);
   }
 
   const paths = data.counties.map((c) => {
@@ -68,6 +73,7 @@ export default async function Page() {
             : ({ "--f": rampColor(scalePosition(c.p, sorted), RAMP) } as React.CSSProperties)
         }
         d={c.d}
+        data-f={c.f}
         data-n={c.n}
         data-s={c.s}
         data-p={c.p ?? undefined}
@@ -139,6 +145,9 @@ export default async function Page() {
             </div>
           </details>
         </div>
+        {dates.length > 1 && pooled.length > 1 && (
+          <DateScrubber dates={dates} pooled={pooled} liveDate={data.fetched ?? null} />
+        )}
         <AtlasViews
           viewBox={`0 0 ${data.w} ${data.h}`}
           stateLines={stateLines}

@@ -150,8 +150,8 @@ export default function MapView({ viewBox, children, stateLines, gradient, ticks
           </pattern>
         </defs>
         <g transform={`translate(${view.x},${view.y}) scale(${view.k})`}>
-          <g>{children}</g>
-          <g>{stateLines}</g>
+          <g id="counties">{children}</g>
+          <g id="stateline">{stateLines}</g>
         </g>
       </svg>
 

@@ -67,3 +67,45 @@ export async function coverage() {
     last: (r.last as Date).toISOString().slice(0, 10),
   };
 }
+
+/**
+ * Dates with enough coverage to draw a national map.
+ * The archive sampled unevenly, so thin dates would render as a half-empty map.
+ */
+export async function availableDates(): Promise<{ date: string; n: number }[]> {
+  const rows = await sql`
+    SELECT observed, count(*)::int AS n
+    FROM prices GROUP BY observed
+    HAVING count(*) > 1000
+    ORDER BY observed`;
+  return rows.map((r) => ({
+    date: (r.observed as Date).toISOString().slice(0, 10),
+    n: r.n as number,
+  }));
+}
+
+/**
+ * Evenly spaced quantiles of the pooled distribution across every date.
+ *
+ * The colour scale has to be fixed across dates or scrubbing through time shows
+ * nothing — each date would re-rank against itself and look identical. Shipping
+ * all 275k values is out of the question, so this is a 1,001-point summary the
+ * client interpolates rank against; that is accurate to well under a cent.
+ */
+export async function pooledQuantiles(steps = 1000): Promise<number[]> {
+  const fracs = Array.from({ length: steps + 1 }, (_, i) => i / steps);
+  const [r] = await sql`
+    SELECT percentile_cont(${fracs}::float8[]) WITHIN GROUP (ORDER BY price) AS q
+    FROM prices`;
+  return (r.q as unknown[]).map(Number);
+}
+
+/** Every county's price on one date, as parallel arrays to keep the wire small. */
+export async function pricesOn(date: string): Promise<{ fips: string[]; price: number[] }> {
+  const rows = await sql`
+    SELECT fips, price FROM prices WHERE observed = ${date}::date ORDER BY fips`;
+  return {
+    fips: rows.map((r) => (r.fips as string).trim()),
+    price: rows.map((r) => Number(r.price)),
+  };
+}
