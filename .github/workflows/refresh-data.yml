@@ -27,19 +27,10 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      # fetch_prices exits non-zero if fewer than 45 states return data, which
-      # fails the job here rather than committing a half-empty map.
+      # Both stages exit non-zero on trouble -- fetch below 45 states, build on
+      # any failed artifact check -- so the job stops before committing.
       - name: Run the pipeline
-        run: |
-          python3 pipeline/fetch_prices.py
-          python3 pipeline/join.py
-          python3 pipeline/fetch_alaska.py
-          python3 pipeline/build_data.py
-          python3 pipeline/build_relief.py
-          python3 pipeline/append_history.py
-
-      - name: Sanity-check the built artifacts
-        run: python3 pipeline/check_artifacts.py
+        run: npm run data
 
       - name: Commit if anything changed
         run: |

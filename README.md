@@ -48,16 +48,16 @@ Writes `data/counties.json` (read at build time), `public/relief.json` (fetched
 by the relief view at runtime, so it must be deployed) and appends to
 `data/history.json`.
 
-That runs six stages in order:
+Two stages:
 
 | Stage | What it does |
 |---|---|
-| `pipeline/fetch_prices.py` | Pulls AAA's daily county payload for all 50 states. Disk-cached in `data/raw/`, 1 req/sec — AAA returns 429 if pushed harder. |
-| `pipeline/join.py` | Joins county names to Census FIPS. Emits an explicit unmatched/conflict report rather than silently dropping rows. |
-| `pipeline/fetch_alaska.py` | Pulls the Alaska DCCED community fuel survey and aggregates it to boroughs by point-in-polygon. |
-| `pipeline/build_data.py` | Projects geometry to SVG paths and merges every source into `data/counties.json`. |
-| `pipeline/build_relief.py` | Projects the county outlines for the 3D relief into `public/relief.json`, with the shared colour domain. |
-| `pipeline/append_history.py` | Folds the snapshot into `data/history.json` under its ISO week. |
+| `pipeline/fetch.py` | The only network work for prices: 51 state pages to discover each `map_id`, then 51 county payloads. ~2 min, almost all of it the 1 req/sec delay — AAA 429s if pushed harder. Writes `data/prices.json`. |
+| `pipeline/build.py` | Everything local, ~3 seconds. Joins names to FIPS, fills Alaska from the DCCED survey, projects the topology **once** and derives both outputs from that pass, appends to the history, and self-checks. |
+
+`pipeline/geo.py` (projection + TopoJSON) and `pipeline/join.py` (name → FIPS)
+are libraries, not stages. `pipeline/palette.py` is the design tool that
+generated the colour ramp. `pipeline/backfill_history.py` is a one-off.
 
 ## Running it on a schedule
 

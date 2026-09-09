@@ -1,11 +1,13 @@
-"""Join AAA county price rows onto Census FIPS, refusing to guess.
+"""Library: join AAA county price rows onto Census FIPS, refusing to guess.
+
+Used by pipeline/build.py and pipeline/backfill_history.py.
 
 The only genuinely ambiguous cases nationally are 6 county/independent-city name
 collisions (Baltimore MD, St. Louis MO, and Richmond/Franklin/Roanoke/Fairfax VA).
 In every one the independent city carries the higher FIPS, so an AAA name ending
 in " City" resolves to the higher of the pair and a bare name to the lower.
 """
-import json, re, unicodedata
+import re, unicodedata
 from collections import defaultdict
 from geo import ensure_topology
 
@@ -90,28 +92,3 @@ def join(rows, idx):
         matched[fips] = {"state": st, "name": raw, "price": r["price"]}
     return matched, unmatched, conflicts
 
-
-if __name__ == "__main__":
-    payload = json.load(open("data/county_prices.json"))
-    # dated wrapper since the fetcher became date-aware; tolerate the old shape
-    rows = payload["rows"] if isinstance(payload, dict) else payload
-    fetched = payload.get("date") if isinstance(payload, dict) else None
-    topo = ensure_topology()
-    idx = build_index(topo)
-    m, u, c = join(rows, idx)
-    total_units = sum(1 for g in topo["objects"]["counties"]["geometries"]
-                      if g["id"][:2] in STATE_FIPS)
-    print(f"AAA priced rows      : {len(rows)}")
-    print(f"matched to FIPS      : {len(m)}")
-    print(f"unmatched            : {len(u)}")
-    print(f"conflicts            : {len(c)}")
-    print(f"atlas units (50+DC)  : {total_units}")
-    print(f"COVERAGE             : {100*len(m)/total_units:.1f}%")
-    if u:
-        print("\n-- unmatched sample --")
-        for r in u[:25]: print(f"   {r['state']} {r['county_raw']!r}")
-    if c:
-        print("\n-- conflicts --")
-        for r in c[:15]: print(f"   {r['state']} {r['county_raw']!r} -> {r['reason']}")
-    json.dump({"date": fetched, "matched": m},
-              open("data/matched.json", "w"), separators=(",", ":"))

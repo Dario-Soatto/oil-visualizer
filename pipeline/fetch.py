@@ -1,4 +1,6 @@
-"""Pull daily county-level retail gas prices from AAA's public county map payloads.
+"""Stage 1 of 2: scrape AAA's county price payloads. The only network work.
+
+Writes data/prices.json ({date, rows}); pipeline/build.py does everything else.
 
 AAA renders a per-state county choropleth whose data lives in a JS config blob at
     /index.php?premiumhtml5map_js_data=true&map_id=<N>
@@ -122,7 +124,7 @@ def main():
         print(f"{st} (map_id={mid}): {priced}/{len(data)} priced")
 
     os.makedirs(os.path.join(HERE, "data"), exist_ok=True)
-    with open(os.path.join(HERE, "data", "county_prices.json"), "w") as f:
+    with open(os.path.join(HERE, "data", "prices.json"), "w") as f:
         json.dump({"date": args.date, "rows": out}, f, separators=(",", ":"))
     total = sum(s[1] for s in stats)
     live = [s[0] for s in stats if s[1] > 0]
