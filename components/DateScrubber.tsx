@@ -14,32 +14,18 @@ import { RAMP, rampColor, scalePosition } from "@/lib/color";
 export default function DateScrubber({
   dates,
   pooled,
-  liveDate,
 }: {
   dates: { date: string; n: number }[];
   pooled: number[];
-  liveDate: string | null;
 }) {
   const [i, setI] = useState(dates.length - 1);
   const [fixedScale, setFixedScale] = useState(true);
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const cache = useRef(new Map<string, { fips: string[]; price: number[] }>());
-  const live = useRef<Map<string, string> | null>(null);
   const reqId = useRef(0);
 
   const current = dates[i];
-
-  // remember the server-rendered colours so "today" can be restored exactly
-  useEffect(() => {
-    if (live.current) return;
-    const m = new Map<string, string>();
-    document.querySelectorAll<SVGPathElement>("path.county[data-f]").forEach((p) => {
-      const f = p.getAttribute("data-f");
-      if (f) m.set(f, p.style.getPropertyValue("--f"));
-    });
-    live.current = m;
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,17 +33,6 @@ export default function DateScrubber({
 
     async function paint() {
       const date = current.date;
-      // the live snapshot is already painted; restoring is instant
-      if (liveDate && date === liveDate && live.current?.size) {
-        document.querySelectorAll<SVGPathElement>("path.county[data-f]").forEach((p) => {
-          const f = p.getAttribute("data-f");
-          const c = f ? live.current!.get(f) : undefined;
-          if (c) p.style.setProperty("--f", c);
-        });
-        setNote(null);
-        return;
-      }
-
       let data = cache.current.get(date);
       if (!data) {
         setLoading(true);
@@ -86,10 +61,17 @@ export default function DateScrubber({
       document.querySelectorAll<SVGPathElement>("path.county[data-f]").forEach((p) => {
         const f = p.getAttribute("data-f");
         const v = f ? byFips.get(f) : undefined;
+        // Which counties report changes date to date, so the no-data hatch has
+        // to follow the date too. Left on its build-time class, a county with no
+        // price today would stay hatched on dates where it did report -- and
+        // .no-data outranks the --f custom property in the cascade, so the
+        // colour would be computed and then silently overridden.
         if (v == null) {
-          p.style.setProperty("--f", "transparent");
+          p.classList.add("no-data");
+          p.style.removeProperty("--f");
           return;
         }
+        p.classList.remove("no-data");
         const key = Math.round(v * 1000);
         let c = colour.get(key);
         if (!c) {
@@ -105,7 +87,7 @@ export default function DateScrubber({
     return () => {
       cancelled = true;
     };
-  }, [i, fixedScale, current.date, liveDate, pooled]);
+  }, [i, fixedScale, current.date, pooled]);
 
   const btn = (on: boolean) =>
     `px-2.5 py-1 text-[10px] tracking-wider border border-[var(--color-rule)] transition-colors ${

@@ -19,8 +19,28 @@ function load(): MapData {
 
 export default async function Page() {
   const data = load();
+  // If the database is unreachable the map must still render; the trend is an
+  // addition to the page, not a prerequisite for it.
+  let trend: Awaited<ReturnType<typeof nationalTrend>> = [];
+  let cov: Awaited<ReturnType<typeof coverage>> | null = null;
+  let dates: Awaited<ReturnType<typeof availableDates>> = [];
+  let pooled: number[] = [];
+  try {
+    [trend, cov, dates, pooled] = await Promise.all([
+      nationalTrend(), coverage(), availableDates(), pooledQuantiles(),
+    ]);
+  } catch (e) {
+    console.error("history unavailable:", e);
+  }
+
   const priced = data.counties.filter((c) => c.p !== null);
-  const sorted = priced.map((c) => c.p as number).sort((a, b) => a - b);
+  const snapshotDomain = priced.map((c) => c.p as number).sort((a, b) => a - b);
+
+  // Colour must mean the same thing on every date, so the map is ranked against
+  // the pooled distribution over all dates -- not against this snapshot. Ranking
+  // each date against itself would make every date look identical and the date
+  // scrubber pointless. Falls back to the snapshot when the database is down.
+  const sorted = pooled.length > 1 ? pooled : snapshotDomain;
 
   // Ticks sit at even positions along the ramp and are labelled with whatever
   // dollar value lands there, so the scale's non-linearity shows up as uneven
@@ -44,20 +64,6 @@ export default async function Page() {
     ? Math.floor((Date.now() - Date.parse(fetched + "T00:00:00Z")) / 86_400_000)
     : null;
   const stale = ageDays != null && ageDays > 8;
-
-  // If the database is unreachable the map must still render; the trend is an
-  // addition to the page, not a prerequisite for it.
-  let trend: Awaited<ReturnType<typeof nationalTrend>> = [];
-  let cov: Awaited<ReturnType<typeof coverage>> | null = null;
-  let dates: Awaited<ReturnType<typeof availableDates>> = [];
-  let pooled: number[] = [];
-  try {
-    [trend, cov, dates, pooled] = await Promise.all([
-      nationalTrend(), coverage(), availableDates(), pooledQuantiles(),
-    ]);
-  } catch (e) {
-    console.error("history unavailable:", e);
-  }
 
   const paths = data.counties.map((c) => {
     // only the Alaska survey is a different vintage; DC is the same daily AAA feed
@@ -146,7 +152,7 @@ export default async function Page() {
           </details>
         </div>
         {dates.length > 1 && pooled.length > 1 && (
-          <DateScrubber dates={dates} pooled={pooled} liveDate={data.fetched ?? null} />
+          <DateScrubber dates={dates} pooled={pooled} />
         )}
         <AtlasViews
           viewBox={`0 0 ${data.w} ${data.h}`}
