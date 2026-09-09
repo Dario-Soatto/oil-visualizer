@@ -5,9 +5,10 @@ import { useState, type ReactNode } from "react";
 import MapView from "./MapView";
 import type { Tick } from "./Legend";
 
-// deck.gl is ~150 KB brotli. Loading it lazily keeps the flat map -- the default
-// view, and the one that server-renders -- from paying for a renderer it never
-// uses. It arrives on the first switch to relief and is cached after that.
+// deck.gl is ~150 KB brotli. It stays a dynamic import even though relief is now
+// the default view: that keeps it off the server bundle and out of the critical
+// HTML, so the page paints and the flat map is interactive while the renderer
+// streams in behind the placeholder.
 const Relief3D = dynamic(() => import("./Relief3D"), {
   ssr: false,
   loading: () => (
@@ -37,7 +38,7 @@ export default function AtlasViews({
   ticks: Tick[];
   reliefSrc: string;
 }) {
-  const [mode, setMode] = useState<Mode>("flat");
+  const [mode, setMode] = useState<Mode>("relief");
 
   const btn = (on: boolean) =>
     `px-3 py-1.5 text-[11px] tracking-wider border border-[var(--color-rule)] transition-colors ${
@@ -69,7 +70,8 @@ export default function AtlasViews({
 
       {/* The flat map's 3,142 paths are server-rendered, so it stays mounted and
           is merely hidden -- rebuilding that subtree on every toggle is wasted
-          work. The 3D unmounts, which releases its WebGL context. */}
+          work, and the date scrubber paints those paths whether or not they are
+          the visible view. The 3D unmounts, which releases its WebGL context. */}
       <div hidden={mode !== "flat"}>
         <MapView viewBox={viewBox} stateLines={stateLines} gradient={gradient} ticks={ticks}>
           {children}
