@@ -101,11 +101,15 @@ export async function pooledQuantiles(steps = 1000): Promise<number[]> {
 }
 
 /** Every county's price on one date, as parallel arrays to keep the wire small. */
-export async function pricesOn(date: string): Promise<{ fips: string[]; price: number[] }> {
+export async function pricesOn(
+  date: string,
+): Promise<{ fips: string[]; price: number[]; source: string[] }> {
   const rows = await sql`
-    SELECT fips, price FROM prices WHERE observed = ${date}::date ORDER BY fips`;
+    SELECT fips, price, source FROM prices
+    WHERE observed = ${date}::date ORDER BY fips`;
   return {
     fips: rows.map((r) => (r.fips as string).trim()),
     price: rows.map((r) => Number(r.price)),
+    source: rows.map((r) => r.source as string),
   };
 }

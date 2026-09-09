@@ -95,6 +95,7 @@ export default function MapView({ viewBox, children, stateLines, gradient, ticks
       state: t.dataset.s ?? "",
       price: t.dataset.p != null ? Number(t.dataset.p) : null,
       note: t.dataset.note ?? null,
+      date: t.dataset.date ?? null,
       x: e.clientX - r.left,
       y: e.clientY - r.top,
     });

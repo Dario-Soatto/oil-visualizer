@@ -11,6 +11,14 @@ import { RAMP, rampColor, scalePosition } from "@/lib/color";
  * --f custom property on each path in place, which is far cheaper than
  * re-rendering 3,142 nodes.
  */
+/** Provenance shown on hover, per row source. */
+const SOURCE_NOTE: Record<string, string | undefined> = {
+  aaa: undefined,
+  dc: "District-wide AAA average",
+  ak: "AK community fuel survey",
+  archive: "archived snapshot \u00B7 weekly sample",
+};
+
 export default function DateScrubber({
   dates,
   pooled,
@@ -22,7 +30,9 @@ export default function DateScrubber({
   const [fixedScale, setFixedScale] = useState(true);
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const cache = useRef(new Map<string, { fips: string[]; price: number[] }>());
+  const cache = useRef(
+    new Map<string, { fips: string[]; price: number[]; source: string[] }>(),
+  );
   const reqId = useRef(0);
 
   const current = dates[i];
@@ -39,7 +49,11 @@ export default function DateScrubber({
         try {
           const r = await fetch(`/api/map/${date}`);
           if (!r.ok) throw new Error(String(r.status));
-          data = (await r.json()) as { fips: string[]; price: number[] };
+          data = (await r.json()) as {
+            fips: string[];
+            price: number[];
+            source: string[];
+          };
           cache.current.set(date, data);
         } catch {
           if (!cancelled && my === reqId.current) setNote("could not load that date");
@@ -54,8 +68,8 @@ export default function DateScrubber({
       // on every frame. per-date: rank within this date, maximising contrast
       // but making dates incomparable.
       const domain = fixedScale ? pooled : [...data.price].sort((a, b) => a - b);
-      const byFips = new Map<string, number>();
-      data.fips.forEach((f, k) => byFips.set(f, data!.price[k]));
+      const byFips = new Map<string, { p: number; s: string }>();
+      data.fips.forEach((f, k) => byFips.set(f, { p: data!.price[k], s: data!.source[k] }));
 
       const colour = new Map<number, string>();
       document.querySelectorAll<SVGPathElement>("path.county[data-f]").forEach((p) => {
@@ -66,16 +80,28 @@ export default function DateScrubber({
         // price today would stay hatched on dates where it did report -- and
         // .no-data outranks the --f custom property in the cascade, so the
         // colour would be computed and then silently overridden.
+        // The hover card reads these attributes, so they have to move with the
+        // date. Left at their build-time values the card reports today's price
+        // while the map is coloured for the date you picked -- the map is right
+        // and the number beside it is wrong, which is worse than either alone.
+        p.dataset.date = date;
         if (v == null) {
           p.classList.add("no-data");
           p.style.removeProperty("--f");
+          delete p.dataset.p;
+          delete p.dataset.note;
           return;
         }
         p.classList.remove("no-data");
-        const key = Math.round(v * 1000);
+        p.dataset.p = String(v.p);
+        const note = SOURCE_NOTE[v.s];
+        if (note) p.dataset.note = note;
+        else delete p.dataset.note;
+
+        const key = Math.round(v.p * 1000);
         let c = colour.get(key);
         if (!c) {
-          c = rampColor(scalePosition(v, domain), RAMP);
+          c = rampColor(scalePosition(v.p, domain), RAMP);
           colour.set(key, c);
         }
         p.style.setProperty("--f", c);

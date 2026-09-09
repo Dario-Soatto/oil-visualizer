@@ -10,6 +10,8 @@ export interface HoverInfo {
   state: string;
   price: number | null;
   note?: string | null;
+  /** the date being viewed, so the card can never disagree with the map */
+  date?: string | null;
   /** cursor position within the map frame */
   x: number;
   y: number;
@@ -26,7 +28,7 @@ export default function HoverCard({
   frameW: number;
   frameH: number;
 }) {
-  const tipH = info.note ? 128 : 96;
+  const tipH = (info.note ? 128 : 96) + (info.date ? 14 : 0);
   const left = info.x + TIP_W + 16 > frameW ? info.x - TIP_W - 16 : info.x + 16;
   const top = info.y + tipH + 16 > frameH ? info.y - tipH - 16 : info.y + 16;
 
@@ -51,8 +53,13 @@ export default function HoverCard({
           no price reported
         </div>
       )}
+      {info.date && (
+        <div className="mt-1.5 text-[10px] tracking-wider text-[var(--color-ink-mute)] tabular-nums">
+          {info.date}
+        </div>
+      )}
       {info.note && (
-        <div className="mt-1.5 text-[10px] leading-snug tracking-wider text-[var(--color-ink-mute)]">
+        <div className="mt-1 text-[10px] leading-snug tracking-wider text-[var(--color-ink-mute)]">
           {info.note}
         </div>
       )}

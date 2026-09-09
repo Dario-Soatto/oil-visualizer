@@ -12,9 +12,9 @@ export async function GET(
     return NextResponse.json({ error: "bad date" }, { status: 400 });
   }
   try {
-    const { fips, price } = await pricesOn(date);
+    const { fips, price, source } = await pricesOn(date);
     return NextResponse.json(
-      { date, fips, price },
+      { date, fips, price, source },
       { headers: { "cache-control": "public, s-maxage=86400, stale-while-revalidate=604800" } },
     );
   } catch (e) {

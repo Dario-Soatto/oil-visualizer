@@ -80,6 +80,7 @@ export default async function Page() {
         }
         d={c.d}
         data-f={c.f}
+        data-date={data.fetched ?? undefined}
         data-n={c.n}
         data-s={c.s}
         data-p={c.p ?? undefined}
