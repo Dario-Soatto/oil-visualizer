@@ -3,9 +3,8 @@ import path from "node:path";
 import AtlasViews from "@/components/AtlasViews";
 import { median, money, type MapData } from "@/lib/bins";
 import { gradientCss, RAMP, rampColor, scalePosition, valueAtPosition } from "@/lib/color";
-import TrendChart from "@/components/TrendChart";
-import { availableDates, coverage, nationalTrend, pooledQuantiles } from "@/lib/db";
-import DateScrubber from "@/components/DateScrubber";
+import { coverage, nationalTrend, pooledQuantiles } from "@/lib/db";
+import TimeScrubber from "@/components/TimeScrubber";
 
 // The map geometry is baked in; the trend comes from Postgres, so the page is
 // revalidated hourly rather than fully static.
@@ -23,11 +22,10 @@ export default async function Page() {
   // addition to the page, not a prerequisite for it.
   let trend: Awaited<ReturnType<typeof nationalTrend>> = [];
   let cov: Awaited<ReturnType<typeof coverage>> | null = null;
-  let dates: Awaited<ReturnType<typeof availableDates>> = [];
   let pooled: number[] = [];
   try {
-    [trend, cov, dates, pooled] = await Promise.all([
-      nationalTrend(), coverage(), availableDates(), pooledQuantiles(),
+    [trend, cov, pooled] = await Promise.all([
+      nationalTrend(), coverage(), pooledQuantiles(),
     ]);
   } catch (e) {
     console.error("history unavailable:", e);
@@ -149,11 +147,20 @@ export default async function Page() {
                 remaining {missing} are hatched: almost all are among the least populated
                 counties in the country, where no survey reports a pump price.
               </p>
+              {cov && (
+                <p>
+                  The history behind the chart is {cov.rows.toLocaleString()} observations
+                  across {cov.counties.toLocaleString()} counties and {cov.dates} dates,{" "}
+                  {cov.first} to {cov.last}. Everything before {data.fetched} was
+                  reconstructed from archived copies of AAA&rsquo;s county payload, sampled
+                  one capture per state-week; each daily refresh adds a point from here on.
+                </p>
+              )}
             </div>
           </details>
         </div>
-        {dates.length > 1 && pooled.length > 1 && (
-          <DateScrubber dates={dates} pooled={pooled} />
+        {trend.length > 1 && pooled.length > 1 && (
+          <TimeScrubber trend={trend} pooled={pooled} />
         )}
         <AtlasViews
           viewBox={`0 0 ${data.w} ${data.h}`}
@@ -166,30 +173,6 @@ export default async function Page() {
         </AtlasViews>
       </section>
 
-      {trend.length > 1 && (
-        <section className="pb-12 border-t border-[var(--color-rule)] pt-8">
-          <div className="flex items-baseline justify-between mb-5 gap-4 flex-wrap">
-            <h2 className="text-xs tracking-widest uppercase text-[var(--color-ink-soft)]">
-              the national trend
-            </h2>
-            <span className="text-[10px] tracking-wider text-[var(--color-ink-mute)]">
-              median county price &middot; shaded band is the 10th&ndash;90th percentile
-            </span>
-          </div>
-          <div className="border border-[var(--color-rule)] bg-[var(--color-paper-warm)] px-4 py-4">
-            <TrendChart data={trend} />
-          </div>
-          {cov && (
-            <p className="mt-4 max-w-3xl text-[13px] leading-relaxed text-[var(--color-ink-soft)]">
-              {cov.rows.toLocaleString()} observations across {cov.counties.toLocaleString()}{" "}
-              counties and {cov.dates} dates, {cov.first} to {cov.last}. Everything before{" "}
-              {data.fetched} was reconstructed from archived copies of AAA&rsquo;s county
-              payload, sampled one capture per state-week; each daily refresh adds a point
-              from here on.
-            </p>
-          )}
-        </section>
-      )}
     </div>
   );
 }
