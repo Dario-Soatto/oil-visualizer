@@ -10,7 +10,7 @@ The cache is keyed by fetch date. Re-running on the same day costs zero requests
 (the point of the cache), but a new day always fetches fresh -- a flat cache
 would make a scheduled job silently serve the first day's prices forever.
 """
-import argparse, datetime, json, os, re, shutil, sys, time
+import argparse, datetime, json, os, random, re, shutil, sys, time
 import requests
 
 # repo root, not pipeline/ -- every path in the pipeline is root-relative
@@ -21,7 +21,12 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 HEADERS = {"User-Agent": UA, "Accept-Language": "en-US,en;q=0.9",
            "Referer": "https://gasprices.aaa.com/"}
-DELAY = 1.0  # be a polite guest on someone else's public page
+# AAA rate-limits, and harder from datacenter IPs than from a home connection:
+# a CI runner sees 429s where a laptop sails through. Pace conservatively and
+# back off hard, because one state exhausting its retries fails the whole run.
+DELAY = 1.6          # seconds between successful requests
+ATTEMPTS = 6
+BACKOFF_BASE = 4.0   # exponential, with jitter, honouring Retry-After when sent
 
 STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN",
           "IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH",
@@ -40,17 +45,30 @@ def prune(root, keep_days):
 def get(url, cache_path, session):
     if os.path.exists(cache_path) and os.path.getsize(cache_path) > 500:
         return open(cache_path, encoding="utf-8", errors="ignore").read()
-    for attempt in range(3):
+    for attempt in range(ATTEMPTS):
+        wait = None
         try:
             r = session.get(url, headers=HEADERS, timeout=30)
             if r.status_code == 200 and len(r.text) > 500:
                 open(cache_path, "w", encoding="utf-8").write(r.text)
                 time.sleep(DELAY)
                 return r.text
-            print(f"    HTTP {r.status_code} (attempt {attempt+1})", file=sys.stderr)
+            if r.status_code in (429, 503):
+                # prefer the server's own advice when it gives any
+                ra = r.headers.get("Retry-After")
+                if ra and ra.isdigit():
+                    wait = min(120.0, float(ra))
+            print(f"    HTTP {r.status_code} (attempt {attempt+1}/{ATTEMPTS})",
+                  file=sys.stderr)
         except requests.RequestException as e:
-            print(f"    {type(e).__name__} (attempt {attempt+1})", file=sys.stderr)
-        time.sleep(2 * (attempt + 1))
+            print(f"    {type(e).__name__} (attempt {attempt+1}/{ATTEMPTS})",
+                  file=sys.stderr)
+        if attempt == ATTEMPTS - 1:
+            break
+        if wait is None:
+            wait = BACKOFF_BASE * (2 ** attempt)
+        wait = min(120.0, wait) * (0.75 + 0.5 * random.random())   # jitter
+        time.sleep(wait)
     return None
 
 
