@@ -112,7 +112,7 @@ export default function Relief3D({
       date: string | null;
     }[] = [];
     for (const c of data.counties) {
-      // relief.json has no FIPS, so match the scrubber's prices by name+state
+      // scrubbed prices are keyed by FIPS, which relief.json carries too
       const dated = md ? md.byFips.get(c.f) : undefined;
       const price = md ? dated?.p : c.p;
       if (price == null) continue;

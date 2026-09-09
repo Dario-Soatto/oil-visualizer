@@ -7,7 +7,10 @@ simplifications of the same projected geometry, not two separate projections.
 
   data/prices.json  ->  data/counties.json    flat map, read at build time
                         public/relief.json    3D view, fetched at runtime
-                        data/history.json     weekly series, appended in place
+
+The price history lives in Postgres, not here; `scripts/db.mjs ingest` loads
+this snapshot into it. data/history.json is the frozen Wayback reconstruction
+that seeded that table once and is not written again.
 """
 import datetime, json, re, sys, urllib.parse, urllib.request
 from collections import defaultdict
@@ -169,7 +172,8 @@ def main():
             price, tier = ak[f][0], "ak"
             note = f"AK community survey, {AK_SEASON} {AK_YEAR} ({ak[f][1]} communities)"
         rec = {"f": f, "d": c["d"], "n": name, "s": c["s"],
-               "p": round(price, 3) if price else None, "t": tier, "note": note}
+               "p": round(price, 3) if price is not None else None,
+               "t": tier, "note": note}
         if c["approx"]:
             rec["approx"] = True
         out_counties.append(rec)
@@ -193,51 +197,7 @@ def main():
                "domain": domain, "counties": out_relief},
               open("public/relief.json", "w"), separators=(",", ":"))
 
-    append_history(out_counties, fetched)
     return check(out_counties, out_relief, domain, fetched)
-
-
-# ------------------------------------------------------------- history ------
-def append_history(counties, fetched):
-    """Fold the snapshot into history.json under its ISO week. Idempotent: a
-    same-day re-run rewrites the week rather than appending a duplicate."""
-    import os
-    HIST = "data/history.json"
-    day = datetime.date.fromisoformat(fetched)
-    y, w, _ = day.isocalendar()
-    week = f"{y}-W{w:02d}"
-    priced = {c["f"]: c["p"] for c in counties if c["p"] is not None}
-    states = {c["s"] for c in counties if c["p"] is not None}
-
-    h = (json.load(open(HIST)) if os.path.exists(HIST)
-         else {"weeks": [], "states_per_week": [], "fips": [], "prices": [],
-               "source": "AAA county payloads"})
-    fips = list(h["fips"])
-    known = {f: i for i, f in enumerate(fips)}
-    added = [f for f in sorted(priced) if f not in known]
-    for f in added:
-        known[f] = len(fips)
-        fips.append(f)
-    for row in h["prices"]:
-        row.extend([None] * len(added))
-
-    row = [None] * len(fips)
-    for f, p in priced.items():
-        row[known[f]] = p
-
-    weeks, spw = list(h["weeks"]), list(h["states_per_week"])
-    if week in weeks:
-        i = weeks.index(week)
-        h["prices"][i], spw[i] = row, len(states)
-        action = "replaced"
-    else:
-        i = next((k for k, ww in enumerate(weeks) if ww > week), len(weeks))
-        weeks.insert(i, week); spw.insert(i, len(states)); h["prices"].insert(i, row)
-        action = "inserted"
-    h.update({"weeks": weeks, "states_per_week": spw, "fips": fips})
-    json.dump(h, open(HIST, "w"), separators=(",", ":"))
-    print(f"history: {action} {week} ({len(priced)} counties, {len(states)} states) "
-          f"-> {len(weeks)} weeks, {weeks[0]} .. {weeks[-1]}")
 
 
 # --------------------------------------------------------------- checks -----

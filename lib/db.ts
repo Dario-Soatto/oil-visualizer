@@ -1,7 +1,24 @@
-import { neon } from "@neondatabase/serverless";
+import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 
 // Queries run against the Neon Postgres the pipeline writes to each day.
-const sql = neon(process.env.DATABASE_URL!);
+//
+// Connected lazily rather than at module scope: neon() throws outright when the
+// connection string is absent, and at module scope that throw happens during
+// import -- taking the whole page down before the caller's try/catch can run.
+// The page is meant to degrade to a map with no trend when the database is
+// unreachable, which includes the case where it was never configured.
+let conn: NeonQueryFunction<false, false> | null = null;
+function db() {
+  if (!conn) {
+    const url = process.env.DATABASE_URL;
+    if (!url) throw new Error("DATABASE_URL is not set");
+    conn = neon(url);
+  }
+  return conn;
+}
+
+/** Dates thin enough to render as a half-empty national map are not offered. */
+const MIN_COUNTIES_FOR_A_MAP = 1000;
 
 export interface TrendPoint {
   date: string;   // ISO date
@@ -15,9 +32,12 @@ export interface TrendPoint {
  * National distribution per observation date. Archive rows are weekly samples
  * and daily rows are single days; both are one point here, which is honest as
  * long as nothing tries to read a slope between two adjacent points as a rate.
+ *
+ * This doubles as the scrubber's list of selectable dates, so the coverage
+ * floor here is what keeps a thin date from being pickable.
  */
 export async function nationalTrend(): Promise<TrendPoint[]> {
-  const rows = await sql`
+  const rows = await db()`
     SELECT observed,
            count(*)::int AS n,
            percentile_cont(0.5) WITHIN GROUP (ORDER BY price) AS med,
@@ -25,7 +45,7 @@ export async function nationalTrend(): Promise<TrendPoint[]> {
            percentile_cont(0.9) WITHIN GROUP (ORDER BY price) AS p90
     FROM prices
     GROUP BY observed
-    HAVING count(*) > 1000
+    HAVING count(*) > ${MIN_COUNTIES_FOR_A_MAP}::bigint
     ORDER BY observed`;
   return rows.map((r) => ({
     date: (r.observed as Date).toISOString().slice(0, 10),
@@ -36,24 +56,8 @@ export async function nationalTrend(): Promise<TrendPoint[]> {
   }));
 }
 
-export interface CountyPoint {
-  date: string;
-  price: number;
-}
-
-export async function countyHistory(fips: string): Promise<CountyPoint[]> {
-  const rows = await sql`
-    SELECT observed, price FROM prices
-    WHERE fips = ${fips}
-    ORDER BY observed`;
-  return rows.map((r) => ({
-    date: (r.observed as Date).toISOString().slice(0, 10),
-    price: Number(r.price),
-  }));
-}
-
 export async function coverage() {
-  const [r] = await sql`
+  const [r] = await db()`
     SELECT count(*)::int AS rows,
            count(DISTINCT fips)::int AS counties,
            count(DISTINCT observed)::int AS dates,
@@ -69,22 +73,6 @@ export async function coverage() {
 }
 
 /**
- * Dates with enough coverage to draw a national map.
- * The archive sampled unevenly, so thin dates would render as a half-empty map.
- */
-export async function availableDates(): Promise<{ date: string; n: number }[]> {
-  const rows = await sql`
-    SELECT observed, count(*)::int AS n
-    FROM prices GROUP BY observed
-    HAVING count(*) > 1000
-    ORDER BY observed`;
-  return rows.map((r) => ({
-    date: (r.observed as Date).toISOString().slice(0, 10),
-    n: r.n as number,
-  }));
-}
-
-/**
  * Evenly spaced quantiles of the pooled distribution across every date.
  *
  * One scale for everything: every price on every date ranks against this, so a
@@ -95,7 +83,7 @@ export async function availableDates(): Promise<{ date: string; n: number }[]> {
  */
 export async function pooledQuantiles(steps = 1000): Promise<number[]> {
   const fracs = Array.from({ length: steps + 1 }, (_, i) => i / steps);
-  const [r] = await sql`
+  const [r] = await db()`
     SELECT percentile_cont(${fracs}::float8[]) WITHIN GROUP (ORDER BY price) AS q
     FROM prices`;
   return (r.q as unknown[]).map(Number);
@@ -105,7 +93,7 @@ export async function pooledQuantiles(steps = 1000): Promise<number[]> {
 export async function pricesOn(
   date: string,
 ): Promise<{ fips: string[]; price: number[]; source: string[] }> {
-  const rows = await sql`
+  const rows = await db()`
     SELECT fips, price, source FROM prices
     WHERE observed = ${date}::date ORDER BY fips`;
   return {

@@ -18,7 +18,6 @@ jobs:
     permissions:
       contents: write
     env:
-      # job-level so the ingest step's `if` can test whether it is set at all
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
       - uses: actions/checkout@v4
@@ -41,20 +40,34 @@ jobs:
       - name: Run the pipeline
         run: npm run data
 
-      # Skipped until DATABASE_URL is set as a repo secret, so the refresh still
-      # works before the database is wired up.
-      - name: Load the snapshot into Postgres
-        if: ${{ env.DATABASE_URL != '' }}
-        run: node scripts/db.mjs ingest
-
+      # Committed before the database load, not after: AAA serves only today's
+      # prices, so a scrape is unrepeatable. If Postgres is unreachable the day's
+      # map should still land in the repo, and the job should still go red.
       - name: Commit if anything changed
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/counties.json data/history.json public/relief.json
+          git add data/counties.json public/relief.json
           if git diff --cached --quiet; then
             echo "no change; nothing to commit"
           else
             git commit -m "Refresh prices $(date -u +%Y-%m-%d)"
             git push
           fi
+
+      # Not conditional. This step used to be skipped when DATABASE_URL was
+      # unset, which meant a repository without the secret ran green every day
+      # while writing nothing to the history -- the exact failure the history is
+      # there to prevent, made invisible. `ingest` reads the day back after
+      # writing it, so this step is red unless the scrape is actually in there.
+      - name: Load the snapshot into the price history
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL secret is not set, so this scrape was not"
+            echo "::error::added to the price history. Set it under Settings >"
+            echo "::error::Secrets and variables > Actions. Today's prices are"
+            echo "::error::committed, but AAA does not serve past dates: any day"
+            echo "::error::this step does not run is a permanent gap in the history."
+            exit 1
+          fi
+          node scripts/db.mjs ingest

@@ -3,7 +3,8 @@
  *
  *   node --env-file=.env.local scripts/db.mjs migrate
  *   node --env-file=.env.local scripts/db.mjs backfill
- *   node --env-file=.env.local scripts/db.mjs ingest
+ *   node --env-file=.env.local scripts/db.mjs ingest    today's snapshot -> history
+ *   node --env-file=.env.local scripts/db.mjs verify    did it land?
  *   node --env-file=.env.local scripts/db.mjs stats
  *
  * Prices are stored one row per county per observation date. The Wayback
@@ -13,6 +14,16 @@
  */
 import { readFileSync } from "node:fs";
 import { neon } from "@neondatabase/serverless";
+
+if (!process.env.DATABASE_URL) {
+  console.error(
+    "DATABASE_URL is not set.\n" +
+    "  locally:  npx vercel env pull .env.local --environment=development\n" +
+    "            then run with  node --env-file=.env.local scripts/db.mjs <cmd>\n" +
+    "  in CI:    set it as a repository secret (Settings > Secrets > Actions)",
+  );
+  process.exit(1);
+}
 
 const sql = neon(process.env.DATABASE_URL);
 const BATCH = 4000;
@@ -119,8 +130,42 @@ if (cmd === "migrate") {
   const rows = d.counties
     .filter(c => c.p !== null)
     .map(c => ({ fips: c.f, observed, price: c.p, source: c.t ?? "aaa" }));
+  if (rows.length < 3000) {
+    throw new Error(`snapshot has only ${rows.length} priced counties; refusing to ingest`);
+  }
   const n = await upsertPrices(rows);
-  console.log(`ingested ${n.toLocaleString()} prices for ${observed}`);
+
+  // Read the day back rather than trusting the write. A scrape that does not
+  // reach the history is the failure that matters here and it is otherwise
+  // silent -- the map still renders from counties.json, so nothing looks wrong
+  // until you scrub back and find the date missing.
+  const [got] = await sql`
+    SELECT count(*)::int AS n FROM prices WHERE observed = ${observed}::date`;
+  if (got.n !== rows.length) {
+    throw new Error(
+      `ingest did not land: wrote ${rows.length} rows for ${observed}, ` +
+      `database reports ${got.n}`,
+    );
+  }
+  console.log(`ingested ${n.toLocaleString()} prices for ${observed}; verified in database`);
+
+} else if (cmd === "verify") {
+  // Standalone form of the check above, for asking "did today's scrape make it
+  // into the history?" without rewriting anything.
+  const d = JSON.parse(readFileSync("data/counties.json", "utf8"));
+  const observed = d.fetched;
+  const expected = d.counties.filter(c => c.p !== null).length;
+  const [got] = await sql`
+    SELECT count(*)::int AS n FROM prices WHERE observed = ${observed}::date`;
+  if (got.n === 0) {
+    console.error(`MISSING: no rows for ${observed}; run "db.mjs ingest"`);
+    process.exit(1);
+  }
+  if (got.n !== expected) {
+    console.error(`PARTIAL: ${observed} has ${got.n} rows, snapshot has ${expected}`);
+    process.exit(1);
+  }
+  console.log(`${observed}: ${got.n.toLocaleString()} rows present`);
 
 } else if (cmd === "stats") {
   const [a] = await sql`SELECT count(*)::int AS rows,
@@ -133,6 +178,6 @@ if (cmd === "migrate") {
   console.table(bySrc);
 
 } else {
-  console.error("usage: db.mjs migrate|backfill|ingest|stats");
+  console.error("usage: db.mjs migrate|backfill|ingest|verify|stats");
   process.exit(1);
 }

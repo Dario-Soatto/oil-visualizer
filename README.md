@@ -1,8 +1,9 @@
 # Pump Price Atlas
 
-Retail gasoline price for every US county that has a reported figure — 3,115 of
-3,142 county-equivalents (99.1%) — rendered as a continuous choropleth on an
-Albers USA composite projection. Every county is coloured from its own price;
+Retail gasoline price for every US county that has a reported figure — around
+3,100 of 3,142 county-equivalents (~98–99%; the exact count moves with AAA's
+daily coverage, and the page states the day's figure) — rendered as a continuous
+choropleth on an Albers USA composite projection. Every county is coloured from its own price;
 there are no classes.
 
 Two views on one page, toggled: the flat choropleth, and a relief where each
@@ -44,26 +45,28 @@ pip install -r requirements.txt
 npm run data
 ```
 
-Writes `data/counties.json` (read at build time), `public/relief.json` (fetched
-by the relief view at runtime, so it must be deployed) and appends to
-`data/history.json`.
+Writes `data/counties.json` (read at build time) and `public/relief.json`
+(fetched by the relief view at runtime, so it must be deployed). The price
+history lives in Postgres; `scripts/db.mjs ingest` puts the snapshot there.
 
 Two stages:
 
 | Stage | What it does |
 |---|---|
 | `pipeline/fetch.py` | The only network work for prices: 51 state pages to discover each `map_id`, then 51 county payloads. ~2 min, almost all of it the 1 req/sec delay — AAA 429s if pushed harder. Writes `data/prices.json`. |
-| `pipeline/build.py` | Everything local, ~3 seconds. Joins names to FIPS, fills Alaska from the DCCED survey, projects the topology **once** and derives both outputs from that pass, appends to the history, and self-checks. |
+| `pipeline/build.py` | Everything local, ~3 seconds. Joins names to FIPS, fills Alaska from the DCCED survey, projects the topology **once** and derives both outputs from that pass, and self-checks. |
 
 `pipeline/geo.py` (projection + TopoJSON) and `pipeline/join.py` (name → FIPS)
 are libraries, not stages. `pipeline/palette.py` is the design tool that
-generated the colour ramp. `pipeline/backfill_history.py` is a one-off.
+generated the colour ramp. `pipeline/backfill_history.py` is a one-off that has
+already been run; `data/history.json` is its frozen output, kept as the seed for
+`db.mjs backfill` and not rewritten by the daily pipeline.
 
 ## Database
 
 Prices are also written to a Neon Postgres (`oil-visualizer-db`, provisioned
 through Vercel's marketplace on the free tier), which is what backs the trend
-chart and the per-county history.
+chart and every date the scrubber can reach.
 
 ```sql
 counties (fips, name, state)
@@ -80,12 +83,15 @@ npx vercel env pull .env.local --environment=development   # get DATABASE_URL
 node --env-file=.env.local scripts/db.mjs migrate          # create tables
 node --env-file=.env.local scripts/db.mjs backfill         # load data/history.json
 node --env-file=.env.local scripts/db.mjs ingest           # load today's snapshot
+node --env-file=.env.local scripts/db.mjs verify           # did today's land?
 node --env-file=.env.local scripts/db.mjs stats            # what is in there
 ```
 
-Currently 272,640 observations across 3,128 counties and 89 dates, 2020-04-06 to
-2026-09-08. `ingest` is idempotent — it upserts on `(fips, observed)`, so
-re-running a day overwrites rather than duplicates.
+Currently 275,733 observations across 3,128 counties and 90 dates, 2020-04-06 to
+2026-09-09. `ingest` is idempotent — it upserts on `(fips, observed)`, so
+re-running a day overwrites rather than duplicates — and it reads the day back
+after writing, so it fails rather than reporting success on a write that did not
+land.
 
 **Both views follow the date.** The scrubber publishes the selected date through
 a small external store (`lib/mapDate.ts`) that the relief subscribes to, so
@@ -94,8 +100,11 @@ relief. Relief height is measured from a baseline fixed across dates, so the
 terrain visibly rises over the period rather than only changing hue — April 2020
 renders pale and flat, June 2022 dark and tall.
 
-**Scrubbing back through time.** A date slider above the map replays every date
-in the database. The geometry never moves, so only the numbers travel — about
+**Scrubbing back through time.** The trend chart above the map doubles as the
+date control and replays every date in the database. A plain slider was wrong
+here: observations are not evenly spaced, so its midpoint landed 81% of the way
+through the span. On the chart x is real time, and a tick under the axis marks
+each observation, so sparse years read as sparse. The geometry never moves, so only the numbers travel — about
 38 KB per date against the map's 1.2 MB of paths — and recolouring sets the
 `--f` custom property on each path in place rather than re-rendering 3,142 nodes.
 
@@ -119,7 +128,7 @@ the map's data is baked in at build time and never depends on Postgres.
 commits the artifacts if they changed; Vercel redeploys on the push. Daily is
 ample — prices move a few cents a week.
 
-Four things make unattended runs safe, each of which exists because it went
+Five things make unattended runs safe, each of which exists because it went
 wrong at least once here:
 
 **The cache is keyed by date.** `data/raw/<YYYY-MM-DD>/`. The cache exists so a
@@ -127,25 +136,32 @@ re-run costs zero requests, but a flat one would have made a scheduled job serve
 the first day's prices forever while looking perfectly healthy. Snapshots older
 than 7 days are pruned; the parsed result is what is kept.
 
-**The fetch fails loudly.** `fetch_prices.py` exits non-zero if fewer than 45 of
-51 states return data, so a partial scrape stops the run instead of committing a
-half-empty map. Tune with `--min-states`.
+**The fetch fails loudly.** `pipeline/fetch.py` exits non-zero if fewer than 45
+of 51 states return data, so a partial scrape stops the run instead of
+committing a half-empty map. Tune with `--min-states`.
 
-**The artifacts are checked before commit.** `pipeline/check_artifacts.py`
-asserts county coverage, plausible price ranges, that the flat and relief views
-share a vintage and colour domain, that no relief county sits below the
-extrusion floor, and that the history stays ordered and gains the current week.
+**The artifacts are checked before commit.** `check()` in `pipeline/build.py`
+asserts county coverage, that *every* jurisdiction contributes at least one
+priced county (a count threshold alone let DC go missing once), plausible price
+ranges, that the snapshot is not stale, and that no relief county sits below the
+colour domain floor.
 
-**The database load is optional.** The ingest step is skipped unless
-`DATABASE_URL` is set as a repository secret, so the refresh keeps working
-whether or not the database is wired up.
+**The database load is not optional, and it verifies itself.** It used to be
+skipped when `DATABASE_URL` was unset — which meant a repository without the
+secret ran green every day while writing nothing to the history, hiding the one
+failure the history exists to prevent. The step now runs unconditionally and
+fails with an explanatory message if the secret is missing, and `ingest` reads
+the date back after writing it. AAA serves only today's prices, so a day that
+does not reach Postgres is a permanent hole; it should be loud. The commit step
+runs *before* the load, so a database outage still leaves the day's map in the
+repo.
 
 **The page states its own vintage.** `counties.json` carries a `fetched` date,
 shown next to the coverage line, and it turns red past eight days. An undated map
 goes wrong quietly; this one says so.
 
-Re-running on the same day is idempotent — the cache is warm and
-`append_history` rewrites the current week rather than appending a duplicate.
+Re-running on the same day is idempotent — the cache is warm and `ingest`
+upserts on `(fips, observed)` rather than inserting a duplicate.
 
 ## Historical backfill
 
@@ -180,7 +196,7 @@ cent (Dubois IN $3.29 vs $3.296; Harris TX $3.52 vs $3.55).
 
 ## Where the numbers come from
 
-**AAA daily county averages** (3,105 counties) are the bulk. AAA renders a county
+**AAA daily county averages** (~3,090 counties, varying daily) are the bulk. AAA renders a county
 choropleth on each state page; its data lives in a JS config blob at
 `/index.php?premiumhtml5map_js_data=true&map_id=<N>`, where the id is per-state and
 discoverable from that state's page.
@@ -208,7 +224,7 @@ handful of outliers. Ranking spends the ramp where the counties actually are.
 
 Colour remains a strict function of price: equal prices get equal colour, and a
 dearer county is always further along the ramp (verified — zero inversions across
-all 3,115). The cost is that the scale is non-linear, which is why the legend's
+every priced county). The cost is that the scale is non-linear, which is why the legend's
 dollar labels sit at uneven spacing and are marked "by percentile". The tooltip
 carries the actual figure.
 
@@ -219,7 +235,7 @@ printed earth pigment on the paper ground rather than as screen colour. The
 palest step sits a shade off `--color-paper` itself. Anchors are generated in
 OKLCH and validated for adjacent-pair colour-vision-deficient separation (protan
 ΔE 12.4, normal-vision ΔE 16.6). Lightness is monotonic across the whole ramp —
-verified zero inversions across all 3,115 counties — which is what keeps the
+verified zero inversions across every priced county — which is what keeps the
 ordering readable under CVD even where hue does not survive. The palette is
 light-only, matching the house system's `color-scheme: light`.
 
@@ -242,7 +258,8 @@ rather than dropped off the map.
 - **A county average hides the station-to-station spread inside it**, which across
   a large metro can exceed a dollar. True station-level data is commercial only
   (OPIS, Barchart); no free feed covers it.
-- **27 counties have no price from any source.** Almost all are among the least
+- **A few dozen counties have no price from any source** (49 on the latest
+  snapshot; the number moves daily with AAA). Almost all are among the least
   populated in the country. They render hatched, and the footer states the count.
 - **The page is ~310 KB brotli** (2.8 MB raw), most of it county path
   geometry. That is the cost of drawing 3,142 real polygons plus a per-county
