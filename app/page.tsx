@@ -3,7 +3,7 @@ import path from "node:path";
 import AtlasViews from "@/components/AtlasViews";
 import { median, money, type MapData } from "@/lib/bins";
 import { gradientCss, RAMP, rampColor, scalePosition, valueAtPosition } from "@/lib/color";
-import { coverage, nationalTrend, pooledQuantiles } from "@/lib/db";
+import { coverage, nationalTrend, pooledQuantiles, recentWindowStart } from "@/lib/db";
 import TimeScrubber from "@/components/TimeScrubber";
 
 // The map geometry is baked in; the trend comes from Postgres, so the page is
@@ -23,9 +23,12 @@ export default async function Page() {
   let trend: Awaited<ReturnType<typeof nationalTrend>> = [];
   let cov: Awaited<ReturnType<typeof coverage>> | null = null;
   let pooled: number[] = [];
+  let recent: number[] = [];
+  let recentFrom = "";
   try {
-    [trend, cov, pooled] = await Promise.all([
-      nationalTrend(), coverage(), pooledQuantiles(),
+    [trend, cov, pooled, recent, recentFrom] = await Promise.all([
+      nationalTrend(), coverage(), pooledQuantiles(), pooledQuantiles(365),
+      recentWindowStart(365),
     ]);
   } catch (e) {
     console.error("history unavailable:", e);
@@ -38,7 +41,8 @@ export default async function Page() {
   // the pooled distribution over all dates -- not against this snapshot. Ranking
   // each date against itself would make every date look identical and the date
   // scrubber pointless. Falls back to the snapshot when the database is down.
-  const sorted = pooled.length > 1 ? pooled : snapshotDomain;
+  // must match TimeScrubber's default scale, or the first paint disagrees
+  const sorted = recent.length > 1 ? recent : pooled.length > 1 ? pooled : snapshotDomain;
 
   // Ticks sit at even positions along the ramp and are labelled with whatever
   // dollar value lands there, so the scale's non-linearity shows up as uneven
@@ -160,7 +164,7 @@ export default async function Page() {
           </details>
         </div>
         {trend.length > 1 && pooled.length > 1 && (
-          <TimeScrubber trend={trend} pooled={pooled} />
+          <TimeScrubber trend={trend} pooled={pooled} recent={recent} recentFrom={recentFrom} />
         )}
         <AtlasViews
           viewBox={`0 0 ${data.w} ${data.h}`}

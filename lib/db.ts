@@ -92,12 +92,24 @@ export async function availableDates(): Promise<{ date: string; n: number }[]> {
  * all 275k values is out of the question, so this is a 1,001-point summary the
  * client interpolates rank against; that is accurate to well under a cent.
  */
-export async function pooledQuantiles(steps = 1000): Promise<number[]> {
+export async function pooledQuantiles(sinceDays?: number, steps = 1000): Promise<number[]> {
   const fracs = Array.from({ length: steps + 1 }, (_, i) => i / steps);
-  const [r] = await sql`
-    SELECT percentile_cont(${fracs}::float8[]) WITHIN GROUP (ORDER BY price) AS q
-    FROM prices`;
+  const [r] = sinceDays
+    ? await sql`
+        SELECT percentile_cont(${fracs}::float8[]) WITHIN GROUP (ORDER BY price) AS q
+        FROM prices
+        WHERE observed >= (SELECT max(observed) FROM prices) - ${sinceDays}::int`
+    : await sql`
+        SELECT percentile_cont(${fracs}::float8[]) WITHIN GROUP (ORDER BY price) AS q
+        FROM prices`;
   return (r.q as unknown[]).map(Number);
+}
+
+/** Start of the recent window, so the UI can say when a date falls outside it. */
+export async function recentWindowStart(sinceDays: number): Promise<string> {
+  const [r] = await sql`
+    SELECT ((SELECT max(observed) FROM prices) - ${sinceDays}::int) AS d`;
+  return (r.d as Date).toISOString().slice(0, 10);
 }
 
 /** Every county's price on one date, as parallel arrays to keep the wire small. */
