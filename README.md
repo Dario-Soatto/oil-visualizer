@@ -118,6 +118,14 @@ The cost is arithmetic rather than a design choice: prices roughly doubled over
 the covered period, so any single date occupies a slice of the ramp rather than
 the whole of it. That is the price of one price meaning one colour.
 
+Widening the ramp buys contrast back across the board but cannot rescue the
+flattest dates, and nothing can. In April 2020 the national p5–p95 was
+$1.40–$2.39 — genuinely 5% of the domain — so that map reads nearly uniform
+because the country nearly was. Raising `RANK_WEIGHT` makes it worse rather than
+better: ranking uniformly cheap counties against a pooled domain bunches them
+tighter still, taking 2020 from ΔE 3.3 to 1.4 at pure rank. The 0.25 dollar term
+is the only thing giving those dates any spread.
+
 The page reads the database through `lib/db.ts` and revalidates hourly. If the
 database is unreachable the trend section is omitted and the map still renders;
 the map's data is baked in at build time and never depends on Postgres.
@@ -228,16 +236,31 @@ every priced county). The cost is that the scale is non-linear, which is why the
 dollar labels sit at uneven spacing and are marked "by percentile". The tooltip
 carries the actual figure.
 
-**Ramp anchors.** Pale sand → ochre → brick → plum → deep aubergine: ~145° of
-hue over a 0.59 lightness span, wide enough that counties a little apart in price
-differ in hue as well as tone, but held to low chroma so every stop reads as
-printed earth pigment on the paper ground rather than as screen colour. The
+**Ramp anchors.** Cream → amber → coral → magenta → near-black indigo, in seven
+steps: 154° of hue over a 0.74 lightness span, peaking at 0.174 chroma. The
 palest step sits a shade off `--color-paper` itself. Anchors are generated in
-OKLCH and validated for adjacent-pair colour-vision-deficient separation (protan
-ΔE 12.4, normal-vision ΔE 16.6). Lightness is monotonic across the whole ramp —
-verified zero inversions across every priced county — which is what keeps the
-ordering readable under CVD even where hue does not survive. The palette is
-light-only, matching the house system's `color-scheme: light`.
+OKLCH and validated for adjacent-pair colour-vision-deficient separation
+(normal ΔE 14.1, protan 9.5, deutan 11.6, tritan 12.9, Viénot simulation).
+Lightness is monotonic across the whole ramp — verified zero inversions across
+every priced county — which is what keeps the ordering readable under CVD even
+where hue does not survive. The palette is light-only, matching the house
+system's `color-scheme: light`.
+
+The ramp is deliberately wide, and the width is load-bearing rather than
+decorative. Because every date ranks against one pooled domain spanning
+$1.05–$8.48, a single date only occupies a slice of it — about 22% for a recent
+date, 57% for a mid-2025 one. Contrast *within* a date is therefore the ramp's
+perceptual arc length across that slice, and the only lever that raises it
+without breaking “one price, one colour” is a longer path through colour space:
+a darker dark end and more chroma. These seven anchors measure ΔE 89.5 end to
+end against the 68.7 of the five-anchor version they replaced, which takes a
+recent date from ΔE 15.5 to 20.9 across its middle 90%.
+
+Chroma stops at 0.174 rather than going to the sRGB limit. An eighth anchor at
+~0.215 measured better again (ΔE 23.7, +53% instead of +35%) but its mid-ramp
+steps read as screen colour rather than as printed pigment, which is a visible
+departure from the house system. The extra legibility was not worth leaving the
+palette the rest of these pages share.
 
 **The join refuses to guess.** Six county names collide with an independent city
 inside the same state (Baltimore MD, St. Louis MO, and Richmond / Franklin /

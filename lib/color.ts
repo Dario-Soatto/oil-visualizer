@@ -1,20 +1,38 @@
 /**
  * Continuous colour ramp.
  *
- * Pale sand through ochre, brick and plum to a deep aubergine: a wide sweep
- * — ~145 degrees of hue over a 0.59 lightness span, so counties a little apart
- * in price are a little apart in hue as well as tone — but held to low chroma
- * so every stop reads as printed earth pigment against the paper ground rather
- * than as screen colour. The palest step sits a shade off --color-paper itself.
+ * Cream through amber, coral and magenta to a near-black indigo: 154 degrees of
+ * hue over a 0.74 lightness span, peaking at 0.174 chroma. Anchors interpolate
+ * in OKLab, so intermediate colours stay perceptually even instead of going
+ * muddy through sRGB. The palest step sits a shade off --color-paper itself.
  *
- * Anchors are validated for adjacent-pair CVD separation (protan dE 12.4,
- * normal-vision dE 16.6) and interpolate in OKLab, so intermediate colours stay
- * perceptually even instead of going muddy through sRGB. Lightness is monotonic
- * across the whole ramp, which is what keeps the ordering readable under
- * colour-vision deficiency even where hue does not survive.
+ * The width is doing work rather than decoration. Because every date is ranked
+ * against one pooled domain spanning $1.05-$8.48, a single date only ever
+ * occupies a slice of the ramp -- about 22% for a recent date. Contrast within
+ * a date is therefore the ramp's perceptual arc length across that slice, and
+ * the only lever that raises it without breaking "one price, one colour" is a
+ * longer path through colour space: a darker dark end and more chroma. Measured
+ * over the middle 90% of 2026-09-09, this ramp gives dE 20.9 against the 15.5 of
+ * the narrower five-anchor version it replaced (total arc dE 89.5 vs 68.7).
+ *
+ * Chroma is held to 0.174 rather than pushed to the sRGB limit. A wider eighth
+ * anchor and ~0.215 chroma measured better again (dE 23.7) but the mid-ramp
+ * steps stopped reading as printed pigment on the paper ground, which is the
+ * house system this page shares with the other political-economy pages.
+ *
+ * Widening does not rescue the flattest dates and nothing can: in April 2020 the
+ * national p5-p95 was $1.40-$2.39, which is genuinely 5% of the domain, so that
+ * map reads nearly uniform because the country nearly was. Raising RANK_WEIGHT
+ * makes it worse, not better -- see the note there.
+ *
+ * Lightness is monotonic across the whole ramp, which is what keeps the ordering
+ * readable under colour-vision deficiency even where hue does not survive.
+ * Minimum adjacent-pair separation: normal dE 14.1, protan 9.5, deutan 11.6,
+ * tritan 12.9 (Vienot dichromat simulation).
  */
 export const RAMP = [
-  "#F7ECD1", "#F3AD6D", "#D96B5F", "#9D3C6D", "#4B276A",
+  "#FAF0D4", "#FFBB69", "#F87B4E", "#D3485E",
+  "#9C256E", "#531B73", "#1F0B3D",
 ];
 
 type Lab = [number, number, number];
@@ -75,6 +93,12 @@ export function rampColor(t: number, ramp: string[]): string {
  * inside 15% of the ramp and the map would read flat. At 0.75 the middle 80%
  * still gets 64% of the ramp while the top outliers separate by roughly eight
  * points each, which on this wide a sweep is a visibly different colour.
+ *
+ * It is tempting to raise this to win contrast back on the early dates. It does
+ * the opposite: 2020's counties are uniformly cheap, so ranking them against a
+ * pooled domain bunches them tighter still. Measured across the middle 90% of
+ * 2020-04-06, dE falls from 3.3 at 0.75 to 1.4 at pure rank. The 0.25 dollar
+ * term is the only thing giving those dates any spread at all.
  */
 export const RANK_WEIGHT = 0.75;
 
