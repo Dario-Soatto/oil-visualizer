@@ -14,6 +14,8 @@ export interface County {
 export interface MapData {
   w: number;
   h: number;
+  /** ISO date the prices were fetched, stamped by the pipeline. */
+  fetched?: string | null;
   counties: County[];
   states: string[];
 }

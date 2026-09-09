@@ -1,0 +1,54 @@
+name: Refresh price data
+
+# AAA updates daily. Running at 11:00 UTC lands after the overnight update and
+# before most US traffic. Prices move a few cents a week, so a daily cadence is
+# ample -- there is nothing to gain from hourly.
+on:
+  schedule:
+    - cron: "0 11 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # fetch_prices exits non-zero if fewer than 45 states return data, which
+      # fails the job here rather than committing a half-empty map.
+      - name: Run the pipeline
+        run: |
+          python3 pipeline/fetch_prices.py
+          python3 pipeline/join.py
+          python3 pipeline/fetch_alaska.py
+          python3 pipeline/build_data.py
+          python3 pipeline/build_relief.py
+          python3 pipeline/append_history.py
+
+      - name: Sanity-check the built artifacts
+        run: python3 pipeline/check_artifacts.py
+
+      - name: Commit if anything changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/counties.json data/history.json public/relief.json
+          if git diff --cached --quiet; then
+            echo "no change; nothing to commit"
+          else
+            git commit -m "Refresh prices $(date -u +%Y-%m-%d)"
+            git push
+          fi

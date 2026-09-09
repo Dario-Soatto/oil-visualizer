@@ -78,7 +78,8 @@ for g in topo["objects"]["counties"]["geometries"]:
 # value per priced county, so a price is the same colour in both views.
 domain = sorted(c["p"] for c in prices["counties"] if c["p"] is not None)
 
-out = {"w": W, "h": H, "domain": domain, "counties": counties_out}
+out = {"w": W, "h": H, "fetched": prices.get("fetched"),
+       "domain": domain, "counties": counties_out}
 # served to the client rather than bundled: the 3D route fetches it
 json.dump(out, open("public/relief.json", "w"), separators=(",", ":"))
 

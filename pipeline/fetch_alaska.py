@@ -71,7 +71,8 @@ if __name__ == "__main__":
     json.dump(out, open("data/alaska_fill.json", "w"), separators=(",", ":"))
     print(f"boroughs covered: {len(out)}   communities placed: {sum(v['n'] for v in out.values())}   unplaced: {unplaced}")
 
-    matched = json.load(open("data/matched.json"))
+    _m = json.load(open("data/matched.json"))
+    matched = _m["matched"] if "matched" in _m else _m
     gaps = [f for f in polys if f not in matched]
     fixed = [f for f in gaps if f in out]
     print(f"\nAK boroughs missing from AAA: {len(gaps)}   now fillable: {len(fixed)}")

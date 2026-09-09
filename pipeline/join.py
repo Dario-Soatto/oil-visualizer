@@ -92,7 +92,10 @@ def join(rows, idx):
 
 
 if __name__ == "__main__":
-    rows = json.load(open("data/county_prices.json"))
+    payload = json.load(open("data/county_prices.json"))
+    # dated wrapper since the fetcher became date-aware; tolerate the old shape
+    rows = payload["rows"] if isinstance(payload, dict) else payload
+    fetched = payload.get("date") if isinstance(payload, dict) else None
     topo = ensure_topology()
     idx = build_index(topo)
     m, u, c = join(rows, idx)
@@ -110,4 +113,5 @@ if __name__ == "__main__":
     if c:
         print("\n-- conflicts --")
         for r in c[:15]: print(f"   {r['state']} {r['county_raw']!r} -> {r['reason']}")
-    json.dump(m, open("data/matched.json", "w"), separators=(",", ":"))
+    json.dump({"date": fetched, "matched": m},
+              open("data/matched.json", "w"), separators=(",", ":"))

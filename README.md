@@ -39,15 +39,16 @@ npm install && npm run dev
 
 ## Refreshing the data
 
-The pipeline is Python 3 and needs `requests` and `shapely`. It writes
-`data/counties.json` (read at build time) and `public/relief.json` (fetched by
-the relief view at runtime, so it must be deployed).
-
 ```bash
+pip install -r requirements.txt
 npm run data
 ```
 
-That runs five stages in order:
+Writes `data/counties.json` (read at build time), `public/relief.json` (fetched
+by the relief view at runtime, so it must be deployed) and appends to
+`data/history.json`.
+
+That runs six stages in order:
 
 | Stage | What it does |
 |---|---|
@@ -56,6 +57,37 @@ That runs five stages in order:
 | `pipeline/fetch_alaska.py` | Pulls the Alaska DCCED community fuel survey and aggregates it to boroughs by point-in-polygon. |
 | `pipeline/build_data.py` | Projects geometry to SVG paths and merges every source into `data/counties.json`. |
 | `pipeline/build_relief.py` | Projects the county outlines for the 3D relief into `public/relief.json`, with the shared colour domain. |
+| `pipeline/append_history.py` | Folds the snapshot into `data/history.json` under its ISO week. |
+
+## Running it on a schedule
+
+`.github/workflows/refresh-data.yml` runs the pipeline daily at 11:00 UTC and
+commits the artifacts if they changed; Vercel redeploys on the push. Daily is
+ample — prices move a few cents a week.
+
+Four things make unattended runs safe, each of which exists because it went
+wrong at least once here:
+
+**The cache is keyed by date.** `data/raw/<YYYY-MM-DD>/`. The cache exists so a
+re-run costs zero requests, but a flat one would have made a scheduled job serve
+the first day's prices forever while looking perfectly healthy. Snapshots older
+than 7 days are pruned; the parsed result is what is kept.
+
+**The fetch fails loudly.** `fetch_prices.py` exits non-zero if fewer than 45 of
+51 states return data, so a partial scrape stops the run instead of committing a
+half-empty map. Tune with `--min-states`.
+
+**The artifacts are checked before commit.** `pipeline/check_artifacts.py`
+asserts county coverage, plausible price ranges, that the flat and relief views
+share a vintage and colour domain, that no relief county sits below the
+extrusion floor, and that the history stays ordered and gains the current week.
+
+**The page states its own vintage.** `counties.json` carries a `fetched` date,
+shown next to the coverage line, and it turns red past eight days. An undated map
+goes wrong quietly; this one says so.
+
+Re-running on the same day is idempotent — the cache is warm and
+`append_history` rewrites the current week rather than appending a duplicate.
 
 ## Historical backfill
 
@@ -87,8 +119,6 @@ sampled the site far more often in recent years.
 The result validates against reality: the April 2020 national median comes out at
 $1.75 (the COVID crash), and the final archived week matches the live feed to the
 cent (Dubois IN $3.29 vs $3.296; Harris TX $3.52 vs $3.55).
-
-Re-running is safe: stage 1 serves from `data/raw/` unless you clear it.
 
 ## Where the numbers come from
 

@@ -30,6 +30,14 @@ export default function Page() {
   const surveyCount = priced.filter((c) => c.t === "ak").length;
   const missing = data.counties.length - priced.length;
 
+  // Prices move a few cents a week, so an undated map quietly goes wrong. Say
+  // how old it is, and say so louder once it is more than a week behind.
+  const fetched = data.fetched ?? null;
+  const ageDays = fetched
+    ? Math.floor((Date.now() - Date.parse(fetched + "T00:00:00Z")) / 86_400_000)
+    : null;
+  const stale = ageDays != null && ageDays > 8;
+
   const paths = data.counties.map((c) => {
     // only the Alaska survey is a different vintage; DC is the same daily AAA feed
     const cls =
@@ -70,6 +78,15 @@ export default function Page() {
           <p className="text-[10px] tracking-wider text-[var(--color-ink-mute)]">
             {priced.length.toLocaleString()}/{data.counties.length.toLocaleString()} counties
             priced &middot; {missing} unreported
+            {fetched && (
+              <>
+                {" "}&middot;{" "}
+                <span className={stale ? "text-[var(--color-vermillion)]" : undefined}>
+                  as of {fetched}
+                  {stale && ageDays != null ? ` (${ageDays} days old)` : ""}
+                </span>
+              </>
+            )}
           </p>
         </div>
       </section>

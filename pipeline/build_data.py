@@ -15,7 +15,9 @@ W, H = 975.0, 610.0
 proj = albers_usa(scale=1300.0, translate=(W / 2, H / 2))
 topo = ensure_topology()
 arcs = decode_arcs(topo)
-aaa = json.load(open("data/matched.json"))
+_m = json.load(open("data/matched.json"))
+aaa = _m["matched"] if "matched" in _m else _m
+FETCHED = _m.get("date") if isinstance(_m, dict) else None
 akfill = json.load(open("data/alaska_fill.json"))
 
 # --- DC: pull the District's own daily average off its AAA page -------------
@@ -77,7 +79,8 @@ states = [d for d in (geometry_to_path(g, arcs, pick(g["id"]), min_area_px=1.0)
                       for g in topo["objects"]["states"]["geometries"]
                       if g["id"] in STATE_FIPS) if d]
 
-json.dump({"w": W, "h": H, "counties": counties, "states": states},
+json.dump({"w": W, "h": H, "fetched": FETCHED,
+           "counties": counties, "states": states},
           open("data/counties.json", "w"), separators=(",", ":"))
 
 tot = len(counties)
