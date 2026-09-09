@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RAMP, rampColor, scalePosition } from "@/lib/color";
 import type { TrendPoint } from "@/lib/db";
+import { setMapDate, SOURCE_NOTE } from "@/lib/mapDate";
 
 const W = 900;
 const H = 250;
@@ -11,13 +12,6 @@ const PAD = { t: 14, r: 16, b: 34, l: 46 };
 // Bump when the /api/map response gains or loses a field: the route caches for
 // a day, so a shape change has to change the URL or stale bodies keep arriving.
 const API_VERSION = 2;
-
-const SOURCE_NOTE: Record<string, string | undefined> = {
-  aaa: undefined,
-  dc: "District-wide AAA average",
-  ak: "AK community fuel survey",
-  archive: "archived snapshot · weekly sample",
-};
 
 type Row = { fips: string[]; price: number[]; source?: string[] };
 
@@ -157,6 +151,8 @@ export default function TimeScrubber({
         }
         p.style.setProperty("--f", c);
       });
+      // publish for the relief, which colours and extrudes from the same values
+      setMapDate({ date, byFips, domain, base: pooled[0] ?? 0 });
       setNote(`${data.fips.length.toLocaleString()} counties reported`);
     }
 

@@ -1,4 +1,5 @@
 export interface ReliefCounty {
+  f: string;
   n: string;
   s: string;
   p: number | null;

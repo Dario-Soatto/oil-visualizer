@@ -174,7 +174,7 @@ def main():
             rec["approx"] = True
         out_counties.append(rec)
         if c["rings"]:
-            r = {"n": name, "s": c["s"], "p": rec["p"], "r": c["rings"]}
+            r = {"f": f, "n": name, "s": c["s"], "p": rec["p"], "r": c["rings"]}
             if note:
                 r["note"] = note
             out_relief.append(r)

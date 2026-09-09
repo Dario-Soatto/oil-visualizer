@@ -96,8 +96,12 @@ def extract_map_data(js):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--date", default=datetime.date.today().isoformat(),
-                    help="snapshot date to fetch into (default: today)")
+    # UTC, not local: the scheduled job runs in UTC and a local run must file
+    # the same national snapshot under the same date, or the two disagree by a
+    # day and the history gains a duplicate.
+    ap.add_argument("--date",
+                    default=datetime.datetime.now(datetime.timezone.utc).date().isoformat(),
+                    help="snapshot date to fetch into (default: today, UTC)")
     ap.add_argument("--min-states", type=int, default=45,
                     help="fail the run if fewer states return data")
     args = ap.parse_args()

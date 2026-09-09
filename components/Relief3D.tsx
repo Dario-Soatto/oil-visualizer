@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import DeckGL from "@deck.gl/react";
 import {
   OrbitView,
@@ -13,6 +13,7 @@ import { SolidPolygonLayer } from "@deck.gl/layers";
 import { RAMP, rampColor, scalePosition } from "@/lib/color";
 import { elevationBase, rgb, type Relief } from "@/lib/relief";
 import HoverCard, { type HoverInfo } from "./HoverCard";
+import { getMapDate, getMapDateServer, SOURCE_NOTE, subscribeMapDate } from "@/lib/mapDate";
 import Legend, { type Tick } from "./Legend";
 
 // Matte, ambient-heavy lighting: this should read as a plaster relief model on
@@ -55,6 +56,9 @@ export default function Relief3D({
   const [ready, setReady] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
 
+  // the date the scrubber has selected, if any
+  const md = useSyncExternalStore(subscribeMapDate, getMapDate, getMapDateServer);
+
   useEffect(() => setReady(true), []);
   useEffect(() => {
     let dead = false;
@@ -74,7 +78,7 @@ export default function Relief3D({
   // so the two views agree on every value
   const scale = useMemo(() => {
     if (!data) return null;
-    const sorted = data.domain;
+    const sorted = md ? md.domain : data.domain;
     const cache = new Map<number, [number, number, number]>();
     return (p: number): [number, number, number] => {
       const k = Math.round(p * 1000);
@@ -85,9 +89,15 @@ export default function Relief3D({
       }
       return c;
     };
-  }, [data]);
+  }, [data, md]);
 
-  const base = useMemo(() => (data ? elevationBase(data) : 0), [data]);
+  // Height is measured from a baseline fixed across dates, so scrubbing makes
+  // the terrain rise rather than just recolour. Falls back to the snapshot's own
+  // floor before the scrubber has published anything.
+  const base = useMemo(
+    () => (md ? md.base : data ? elevationBase(data) : 0),
+    [md, data],
+  );
 
   const polys = useMemo(() => {
     if (!data) return [];
@@ -99,22 +109,27 @@ export default function Relief3D({
       n: string;
       s: string;
       note: string | null;
+      date: string | null;
     }[] = [];
     for (const c of data.counties) {
-      if (c.p == null) continue;
+      // relief.json has no FIPS, so match the scrubber's prices by name+state
+      const dated = md ? md.byFips.get(c.f) : undefined;
+      const price = md ? dated?.p : c.p;
+      if (price == null) continue;
       for (const ring of c.r) {
         out.push({
           // negate y so north is up in the 3D scene
           poly: ring.map(([x, y]) => [x - cx, -(y - cy)] as [number, number]),
-          p: c.p,
+          p: price,
           n: c.n,
           s: c.s,
-          note: c.note ?? null,
+          note: md ? (dated?.s ? SOURCE_NOTE[dated.s] ?? null : null) : c.note ?? null,
+          date: md ? md.date : null,
         });
       }
     }
     return out;
-  }, [data]);
+  }, [data, md]);
 
   const layers = useMemo(() => {
     if (!data || !scale) return [];
@@ -161,7 +176,7 @@ export default function Relief3D({
             getCursor={() => "grab"}
             onHover={(info) => {
               const o = info.object as
-                | { p?: number; n?: string; s?: string; note?: string | null }
+                | { p?: number; n?: string; s?: string; note?: string | null; date?: string | null }
                 | null;
               if (o && o.p != null && info.x != null && info.y != null) {
                 setHover({
@@ -169,6 +184,7 @@ export default function Relief3D({
                   state: o.s ?? "",
                   price: o.p,
                   note: o.note ?? null,
+                  date: o.date ?? null,
                   x: info.x,
                   y: info.y,
                 });

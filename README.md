@@ -87,6 +87,13 @@ Currently 272,640 observations across 3,128 counties and 89 dates, 2020-04-06 to
 2026-09-08. `ingest` is idempotent — it upserts on `(fips, observed)`, so
 re-running a day overwrites rather than duplicates.
 
+**Both views follow the date.** The scrubber publishes the selected date through
+a small external store (`lib/mapDate.ts`) that the relief subscribes to, so
+scrubbing recolours the flat map and both recolours *and* re-extrudes the
+relief. Relief height is measured from a baseline fixed across dates, so the
+terrain visibly rises over the period rather than only changing hue — April 2020
+renders pale and flat, June 2022 dark and tall.
+
 **Scrubbing back through time.** A date slider above the map replays every date
 in the database. The geometry never moves, so only the numbers travel — about
 38 KB per date against the map's 1.2 MB of paths — and recolouring sets the
@@ -99,8 +106,6 @@ would show nothing. Fixed, April 2020 renders almost entirely pale (median
 $1.75, the COVID collapse) and today renders dark ($3.91). A "this date only"
 toggle restores per-date ranking when you want maximum contrast within one day
 instead of comparability across them.
-
-The relief view still shows current prices; the scrubber only drives the flat map.
 
 The page reads the database through `lib/db.ts` and revalidates hourly. If the
 database is unreachable the trend section is omitted and the map still renders;
