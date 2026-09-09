@@ -28,27 +28,15 @@ type Row = { fips: string[]; price: number[]; source?: string[] };
  * sparse years read as sparse instead of eating a third of the travel, and you
  * pick a date by pointing at the moment on the price curve you care about.
  */
-type Scale = "recent" | "all" | "date";
-
 export default function TimeScrubber({
   trend,
   pooled,
-  recent,
-  recentFrom,
 }: {
   trend: TrendPoint[];
-  /** rank domain over every date */
+  /** the one colour domain: every price on every date ranks against this */
   pooled: number[];
-  /** rank domain over the last 12 months only */
-  recent: number[];
-  recentFrom: string;
 }) {
   const [i, setI] = useState(trend.length - 1);
-  // Prices roughly doubled over the covered period, so a domain spanning all of
-  // it leaves any single recent date inside ~17% of the ramp. Narrowing it to
-  // the last 12 months gives today ~42%. The cost is that dates before the
-  // window clamp flat, so this is a choice rather than a silent default.
-  const [scale, setScale] = useState<Scale>("recent");
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -116,10 +104,10 @@ export default function TimeScrubber({
       // fixed: rank against every date pooled, so a price is one colour on every
       // frame. per-date: rank within this date, maximising contrast but making
       // dates incomparable.
-      const domain =
-        scale === "all" ? pooled
-        : scale === "recent" ? recent
-        : [...data.price].sort((a, b) => a - b);
+      // One domain, spanning every observation on every date. A price maps to
+      // the same colour wherever and whenever it appears, and nothing clamps
+      // because the domain covers the full observed range.
+      const domain = pooled;
       const src = data.source;
       const byFips = new Map<string, { p: number; s?: string }>();
       data.fips.forEach((f, k) => byFips.set(f, { p: data!.price[k], s: src?.[k] }));
@@ -163,7 +151,7 @@ export default function TimeScrubber({
     return () => {
       cancelled = true;
     };
-  }, [i, scale, trend, pooled, recent]);
+  }, [i, trend, pooled]);
 
   const band =
     trend.map((d) => `${x(d.date).toFixed(1)},${y(d.p90).toFixed(1)}`).join(" L ") +
@@ -181,12 +169,6 @@ export default function TimeScrubber({
 
   const sel = trend[i];
   const step = (d: number) => setI((k) => Math.min(trend.length - 1, Math.max(0, k + d)));
-  const btn = (on: boolean) =>
-    `px-2.5 py-1 text-[10px] tracking-wider border border-[var(--color-rule)] transition-colors ${
-      on
-        ? "bg-[var(--color-ink)] text-[var(--color-paper)]"
-        : "bg-[var(--color-paper)] hover:bg-[var(--color-paper-warm)] text-[var(--color-ink-soft)]"
-    }`;
   const stepBtn =
     "h-6 w-6 flex items-center justify-center border border-[var(--color-rule)] bg-[var(--color-paper)] hover:bg-[var(--color-paper-warm)] text-[var(--color-ink-soft)] disabled:opacity-40 disabled:cursor-not-allowed";
 
@@ -204,30 +186,6 @@ export default function TimeScrubber({
             <span className="text-[var(--color-ink)] tabular-nums">${sel.med.toFixed(2)}</span>
             {loading ? " · loading…" : note ? ` · ${note}` : ""}
           </span>
-          {scale === "recent" && sel.date < recentFrom && (
-            <span className="text-[10px] tracking-wider text-[var(--color-vermillion)]">
-              before {recentFrom} &middot; outside the recent scale, colours clamp
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] tracking-widest uppercase text-[var(--color-ink-mute)]">
-            colour scale
-          </span>
-          <div className="flex gap-px">
-            <button className={btn(scale === "recent")} onClick={() => setScale("recent")}
-                    title="rank against the last 12 months: most contrast where most of the data is">
-              recent
-            </button>
-            <button className={btn(scale === "all")} onClick={() => setScale("all")}
-                    title="rank against every date: comparable across the whole period">
-              all dates
-            </button>
-            <button className={btn(scale === "date")} onClick={() => setScale("date")}
-                    title="rank within this date only: maximum contrast, not comparable">
-              this date
-            </button>
-          </div>
         </div>
       </div>
 

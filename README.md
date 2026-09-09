@@ -99,13 +99,15 @@ in the database. The geometry never moves, so only the numbers travel — about
 38 KB per date against the map's 1.2 MB of paths — and recolouring sets the
 `--f` custom property on each path in place rather than re-rendering 3,142 nodes.
 
-The colour scale defaults to *fixed across all dates*, ranked against a
-1,001-point quantile summary of the pooled distribution. This matters: if each
-date re-ranked against itself, every frame would look identical and scrubbing
-would show nothing. Fixed, April 2020 renders almost entirely pale (median
-$1.75, the COVID collapse) and today renders dark ($3.91). A "this date only"
-toggle restores per-date ranking when you want maximum contrast within one day
-instead of comparability across them.
+There is one colour scale and nothing is clamped. Every price on every date
+ranks against a single domain built from all 275k observations, which spans the
+full observed range, so a given price is the same colour wherever and whenever
+it appears and no date falls outside the ramp. April 2020 renders pale
+(median $1.75, the COVID collapse) and today renders dark ($3.91).
+
+The cost is arithmetic rather than a design choice: prices roughly doubled over
+the covered period, so any single date occupies a slice of the ramp rather than
+the whole of it. That is the price of one price meaning one colour.
 
 The page reads the database through `lib/db.ts` and revalidates hourly. If the
 database is unreachable the trend section is omitted and the map still renders;
