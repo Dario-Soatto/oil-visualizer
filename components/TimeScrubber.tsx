@@ -6,8 +6,8 @@ import type { TrendPoint } from "@/lib/db";
 import { setMapDate, SOURCE_NOTE } from "@/lib/mapDate";
 
 const W = 900;
-const H = 250;
-const PAD = { t: 14, r: 16, b: 34, l: 46 };
+const H = 150;
+const PAD = { t: 10, r: 16, b: 26, l: 42 };
 
 // Bump when the /api/map response gains or loses a field: the route caches for
 // a day, so a shape change has to change the URL or stale bodies keep arriving.
@@ -160,7 +160,7 @@ export default function TimeScrubber({
   const line = trend.map((d) => `${x(d.date).toFixed(1)},${y(d.med).toFixed(1)}`).join(" L ");
 
   const ticks: number[] = [];
-  for (let v = yLo; v <= yHi + 1e-9; v += 0.5) ticks.push(v);
+  for (let v = Math.ceil(yLo); v <= yHi + 1e-9; v += 1) ticks.push(v);
   const years: { year: number; px: number }[] = [];
   for (let yr = new Date(t0).getUTCFullYear(); yr <= new Date(t1).getUTCFullYear(); yr++) {
     const ms = Date.UTC(yr, 0, 1);
@@ -173,8 +173,8 @@ export default function TimeScrubber({
     "h-6 w-6 flex items-center justify-center border border-[var(--color-rule)] bg-[var(--color-paper)] hover:bg-[var(--color-paper-warm)] text-[var(--color-ink-soft)] disabled:opacity-40 disabled:cursor-not-allowed";
 
   return (
-    <div className="mb-5">
-      <div className="flex items-end justify-between gap-4 flex-wrap mb-2">
+    <div className="mb-4">
+      <div className="flex items-end justify-between gap-4 flex-wrap mb-1.5">
         <div className="flex items-center gap-2">
           <button className={stepBtn} onClick={() => step(-1)} disabled={i === 0}
                   aria-label="previous observation">&lsaquo;</button>
@@ -189,7 +189,7 @@ export default function TimeScrubber({
         </div>
       </div>
 
-      <div className="border border-[var(--color-rule)] bg-[var(--color-paper-warm)] px-3 py-2">
+      <div className="border border-[var(--color-rule)] bg-[var(--color-paper-warm)] px-3 py-1.5">
         <svg
           ref={svgRef}
           viewBox={`0 0 ${W} ${H}`}
@@ -219,12 +219,12 @@ export default function TimeScrubber({
                     stroke="var(--color-rule)" strokeWidth={0.5} />
               <text x={PAD.l - 8} y={y(v) + 3} textAnchor="end"
                     className="fill-[var(--color-ink-mute)]" style={{ fontSize: 9 }}>
-                ${v.toFixed(2)}
+                ${v.toFixed(0)}
               </text>
             </g>
           ))}
           {years.map(({ year, px }) => (
-            <text key={year} x={px} y={H - 6} textAnchor="middle"
+            <text key={year} x={px} y={H - 5} textAnchor="middle"
                   className="fill-[var(--color-ink-mute)]"
                   style={{ fontSize: 9, letterSpacing: ".08em" }}>
               {year}
@@ -237,7 +237,7 @@ export default function TimeScrubber({
           {/* one tick per observation: the sparse years should look sparse */}
           {trend.map((d, k) => (
             <line key={d.date} x1={x(d.date)} x2={x(d.date)}
-                  y1={H - PAD.b + 2} y2={H - PAD.b + (k === i ? 9 : 5)}
+                  y1={H - PAD.b + 2} y2={H - PAD.b + (k === i ? 8 : 4)}
                   stroke={k === i ? "var(--color-ink)" : "var(--color-ink-mute)"}
                   strokeWidth={k === i ? 1.4 : 0.6} strokeOpacity={k === i ? 1 : 0.55} />
           ))}
