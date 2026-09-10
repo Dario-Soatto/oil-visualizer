@@ -258,9 +258,10 @@ rather than dropped off the map.
 - **A county average hides the station-to-station spread inside it**, which across
   a large metro can exceed a dollar. True station-level data is commercial only
   (OPIS, Barchart); no free feed covers it.
-- **A few dozen counties have no price from any source** (49 on the latest
-  snapshot; the number moves daily with AAA). Almost all are among the least
-  populated in the country. They render hatched, and the footer states the count.
+- **A few dozen counties have no price from any source** — 27 on a typical day,
+  but it moves with AAA's daily coverage and the page states the day's figure.
+  Almost all are among the least populated in the country. They render hatched,
+  and the footer states the count.
 - **The page is ~310 KB brotli** (2.8 MB raw), most of it county path
   geometry. That is the cost of drawing 3,142 real polygons plus a per-county
   colour; it is served static and cached at the edge, and Vercel negotiates
