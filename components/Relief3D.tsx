@@ -40,6 +40,21 @@ const MATERIAL = {
   specularColor: [40, 36, 30] as [number, number, number],
 };
 
+// Camera framing. The scene lives in the map's own projected pixels and
+// OrbitView's zoom is absolute -- 2^zoom screen pixels per world unit -- so a
+// single hardcoded zoom only frames one window width and crops every other one.
+// Fit the country to the frame instead.
+const TILT = 50;          // degrees; enough relief to read as terrain, flat
+                          // enough that the coastline still reads as a coastline
+const SPIN = -18;         // degrees about Z
+// The 975x610 map, rotated SPIN about Z, needs this much width to bound it.
+const WORLD_W =
+  975 * Math.cos((Math.abs(SPIN) * Math.PI) / 180) +
+  610 * Math.sin((Math.abs(SPIN) * Math.PI) / 180);
+const FILL = 0.86;        // fraction of the frame the country should occupy
+
+const zoomToFit = (frameW: number) => Math.log2((frameW * FILL) / WORLD_W);
+
 
 export default function Relief3D({
   src,
@@ -59,7 +74,14 @@ export default function Relief3D({
   // the date the scrubber has selected, if any
   const md = useSyncExternalStore(subscribeMapDate, getMapDate, getMapDateServer);
 
-  useEffect(() => setReady(true), []);
+  // Measured before the canvas mounts, so the fitted zoom is the one deck.gl
+  // takes as its initial state. Deliberately not tracked after that: refitting
+  // on resize would yank the camera out from under anyone who had moved it.
+  const [frameW, setFrameW] = useState(0);
+  useEffect(() => {
+    setReady(true);
+    if (wrap.current) setFrameW(wrap.current.clientWidth);
+  }, []);
   useEffect(() => {
     let dead = false;
     fetch(src)
@@ -160,14 +182,14 @@ export default function Relief3D({
         className="relative border border-[var(--color-rule)] bg-[var(--color-paper-warm)]"
         style={{ height: 620 }}
       >
-        {ready && data ? (
+        {ready && data && frameW > 0 ? (
           <DeckGL
             views={new OrbitView({ orbitAxis: "Z", fovy: 40 })}
             initialViewState={{
               target: [0, 0, 0],
-              rotationX: 42,
-              rotationOrbit: -18,
-              zoom: 0.12,
+              rotationX: TILT,
+              rotationOrbit: SPIN,
+              zoom: zoomToFit(frameW),
               minZoom: -3,
               maxZoom: 4,
             }}

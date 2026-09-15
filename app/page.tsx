@@ -117,8 +117,7 @@ export default async function Page() {
     <div className="mx-auto max-w-6xl px-8">
       <section className="flex flex-wrap items-end justify-between gap-8 py-14">
         <h1 className="font-serif text-5xl leading-[1.05] text-[var(--color-ink)] tracking-tight">
-          What a gallon costs, county by{" "}
-          <span className="font-serif italic text-[var(--color-vermillion)]">county</span>
+          What a gallon costs, county by county
         </h1>
         <div className="flex flex-col gap-3">
           <div className="grid grid-cols-4 gap-x-6 text-xs">
