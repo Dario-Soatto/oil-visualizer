@@ -28,15 +28,42 @@ MIN_PART = 1.5          # drop relief polygon parts smaller than this (px^2)
 MIN_STATES = 45
 AK_SVC = ("https://maps.commerce.alaska.gov/server/rest/services/Services/"
           "CDO_Utilities/MapServer/6/query")
-AK_YEAR, AK_SEASON = 2026, "Winter"
+# Refuse a survey older than this. Two periods a year, so anything past ~9
+# months means the newest one stopped being found rather than being late.
+AK_MAX_AGE_DAYS = 300
 
 
 # ---------------------------------------------------------------- Alaska ----
-def alaska_fill(records):
+def latest_ak_survey():
+    """The newest reporting period the DCCED service offers.
+
+    This used to be a hardcoded (year, season) pair, which rotted silently: the
+    query kept returning the pinned period forever, so the nine survey boroughs
+    froze at February prices through August while every other county updated
+    daily. Nothing caught it -- AAA still supplies Anchorage and Mat-Su, so
+    Alaska never looked absent, and 9 counties is far inside the coverage floor.
+    Ask the service which period is newest instead of asserting it.
+    """
+    q = urllib.parse.urlencode({
+        "where": "GasRetailGal IS NOT NULL",
+        "outFields": "ReportingYear,ReportingSeason,ReportingDate",
+        "returnGeometry": "false", "returnDistinctValues": "true", "f": "json"})
+    with urllib.request.urlopen(f"{AK_SVC}?{q}", timeout=60) as r:
+        rows = [f["attributes"] for f in json.load(r).get("features", [])]
+    periods = [r for r in rows if r.get("ReportingDate")]
+    if not periods:
+        raise RuntimeError("DCCED survey returned no reporting periods")
+    newest = max(periods, key=lambda r: r["ReportingDate"])
+    on = datetime.datetime.fromtimestamp(
+        newest["ReportingDate"] / 1000, datetime.timezone.utc).date()
+    return newest["ReportingYear"], newest["ReportingSeason"], on
+
+
+def alaska_fill(records, year, season):
     """AAA covers only Anchorage and Mat-Su in Alaska; the state's own community
     survey covers the rest. Semi-annual, so it carries its vintage downstream."""
     q = urllib.parse.urlencode({
-        "where": f"ReportingYear={AK_YEAR} AND ReportingSeason='{AK_SEASON}'",
+        "where": f"ReportingYear={year} AND ReportingSeason='{season}'",
         "outFields": "CommunityName,GasRetailGal",
         "returnGeometry": "true", "outSR": "4326", "f": "json"})
     with urllib.request.urlopen(f"{AK_SVC}?{q}", timeout=60) as r:
@@ -155,8 +182,11 @@ def main():
         counties.append({"f": f, "d": d, "n": g["properties"]["name"],
                          "s": STATE_FIPS[f[:2]], "approx": approx, "rings": rings})
 
-    ak = alaska_fill(ak_lonlat)
-    print(f"Alaska survey: {len(ak)} boroughs available")
+    ak_year, ak_season, ak_on = latest_ak_survey()
+    ak = alaska_fill(ak_lonlat, ak_year, ak_season)
+    ak_age = (datetime.date.today() - ak_on).days
+    print(f"Alaska survey: {ak_season} {ak_year} (surveyed {ak_on}, {ak_age}d ago), "
+          f"{len(ak)} boroughs available")
 
     # --- attach prices ------------------------------------------------------
     out_counties, out_relief = [], []
@@ -170,7 +200,8 @@ def main():
             price, tier, note = dc, "dc", "District-wide AAA average"
         elif f in ak:
             price, tier = ak[f][0], "ak"
-            note = f"AK community survey, {AK_SEASON} {AK_YEAR} ({ak[f][1]} communities)"
+            note = (f"AK community survey, {ak_season} {ak_year}, surveyed {ak_on} "
+                    f"({ak[f][1]} communities)")
         rec = {"f": f, "d": c["d"], "n": name, "s": c["s"],
                "p": round(price, 3) if price is not None else None,
                "t": tier, "note": note}
@@ -197,11 +228,11 @@ def main():
                "domain": domain, "counties": out_relief},
               open("public/relief.json", "w"), separators=(",", ":"))
 
-    return check(out_counties, out_relief, domain, fetched)
+    return check(out_counties, out_relief, domain, fetched, len(ak), ak_age)
 
 
 # --------------------------------------------------------------- checks -----
-def check(counties, relief, domain, fetched):
+def check(counties, relief, domain, fetched, ak_boroughs, ak_age):
     """Fail loudly rather than committing a broken map. Every assertion here
     corresponds to something that has actually gone wrong in this project."""
     problems = []
@@ -232,6 +263,13 @@ def check(counties, relief, domain, fetched):
     rp = [c["p"] for c in relief if c["p"] is not None]
     if rp and domain and min(rp) < domain[0] - 1e-9:
         problems.append("a relief county sits below the colour domain floor")
+    # The Alaska survey is the one source that can go stale without shrinking
+    # coverage: AAA still reports Anchorage and Mat-Su, so a dead survey leaves
+    # Alaska present and merely wrong. Check the vintage, not just the count.
+    if ak_boroughs < 5:
+        problems.append(f"Alaska survey filled only {ak_boroughs} boroughs")
+    if ak_age > AK_MAX_AGE_DAYS:
+        problems.append(f"Alaska survey is {ak_age} days old; a newer period should exist")
 
     print(f"counties : {len(priced)}/{len(counties)} priced, {len(states)} states, "
           f"${min(vals):.2f}-${max(vals):.2f}, fetched {fetched}")

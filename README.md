@@ -87,8 +87,8 @@ node --env-file=.env.local scripts/db.mjs verify           # did today's land?
 node --env-file=.env.local scripts/db.mjs stats            # what is in there
 ```
 
-Currently 275,733 observations across 3,128 counties and 90 dates, 2020-04-06 to
-2026-09-09. `ingest` is idempotent — it upserts on `(fips, observed)`, so
+Currently 294,426 observations across 3,128 counties and 96 dates, 2020-04-06 to
+2026-09-15. `ingest` is idempotent — it upserts on `(fips, observed)`, so
 re-running a day overwrites rather than duplicates — and it reads the day back
 after writing, so it fails rather than reporting success on a write that did not
 land.
@@ -143,8 +143,10 @@ committing a half-empty map. Tune with `--min-states`.
 **The artifacts are checked before commit.** `check()` in `pipeline/build.py`
 asserts county coverage, that *every* jurisdiction contributes at least one
 priced county (a count threshold alone let DC go missing once), plausible price
-ranges, that the snapshot is not stale, and that no relief county sits below the
-colour domain floor.
+ranges, that the snapshot is not stale, that no relief county sits below the
+colour domain floor, and that the Alaska survey's own reporting period is recent
+— a stale survey is invisible to a coverage count, which is how it went seven
+months unnoticed.
 
 **The database load is not optional, and it verifies itself.** It used to be
 skipped when `DATABASE_URL` was unset — which meant a repository without the
@@ -207,10 +209,17 @@ average *is* its county figure.
 **Alaska** (9 boroughs) comes from the [Alaska DCCED community fuel price
 survey](https://www.commerce.alaska.gov/web/dcra/), reached through the state's
 ArcGIS service. AAA covers only Anchorage and Mat-Su in Alaska — the DCCED survey
-exists precisely to cover the rest. It matters: Kusilvak reports **$8.48/gal**,
-which would top the national table outright, and no state-average fill would have
-come close. This survey is semi-annual rather than daily, so those counties carry
-their vintage in the tooltip and a dashed outline on the map.
+exists precisely to cover the rest. It matters: the top borough reports close to
+**$10/gal**, which tops the national table outright, and no state-average fill
+would have come close. This survey is semi-annual rather than daily, so those
+counties carry their vintage in the tooltip and a dashed outline on the map.
+
+The reporting period is read from the service rather than pinned. It used to be
+a hardcoded `(year, season)` pair, which rotted quietly: the query kept returning
+February's numbers while every other county updated daily, and nothing noticed
+for seven months because AAA still supplies Anchorage and Mat-Su, so Alaska never
+looked absent and nine counties sit far inside the coverage floor. `check()` now
+asserts the survey's own age, not just that some Alaska counties exist.
 
 ## Decisions worth knowing
 
