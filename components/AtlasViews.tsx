@@ -30,6 +30,7 @@ export default function AtlasViews({
   gradient,
   ticks,
   reliefSrc,
+  reliefFloor,
 }: {
   viewBox: string;
   children: ReactNode;
@@ -37,6 +38,8 @@ export default function AtlasViews({
   gradient: string;
   ticks: Tick[];
   reliefSrc: string;
+  /** price the relief's columns are measured up from */
+  reliefFloor?: number;
 }) {
   const [mode, setMode] = useState<Mode>("relief");
 
@@ -79,7 +82,7 @@ export default function AtlasViews({
       </div>
 
       {mode === "relief" && (
-        <Relief3D src={reliefSrc} gradient={gradient} ticks={ticks} />
+        <Relief3D src={reliefSrc} gradient={gradient} ticks={ticks} floor={reliefFloor} />
       )}
     </div>
   );

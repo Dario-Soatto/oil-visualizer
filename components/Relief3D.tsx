@@ -42,28 +42,67 @@ const MATERIAL = {
 
 // Camera framing. The scene lives in the map's own projected pixels and
 // OrbitView's zoom is absolute -- 2^zoom screen pixels per world unit -- so a
-// single hardcoded zoom only frames one window width and crops every other one.
-// Fit the country to the frame instead.
+// single hardcoded zoom only frames one window size. Fit to the frame instead.
 const TILT = 50;          // degrees; enough relief to read as terrain, flat
                           // enough that the coastline still reads as a coastline
 const SPIN = -18;         // degrees about Z
-// The 975x610 map, rotated SPIN about Z, needs this much width to bound it.
-const WORLD_W =
-  975 * Math.cos((Math.abs(SPIN) * Math.PI) / 180) +
-  610 * Math.sin((Math.abs(SPIN) * Math.PI) / 180);
-const FILL = 0.86;        // fraction of the frame the country should occupy
+// Fractions of the frame the scene should occupy. They differ, and the reason
+// is perspective: the camera is a 40-degree frustum, not an orthographic one,
+// so the near edge of the tilted plane is magnified. Measured against the
+// rendered canvas, the vertical estimate below lands within a pixel while the
+// horizontal one comes out about 8% narrow, so the width allowance is pulled in
+// to match. Both were read off real renders rather than reasoned about.
+const FILL_W = 0.80;
+const FILL_H = 0.88;
 
-const zoomToFit = (frameW: number) => Math.log2((frameW * FILL) / WORLD_W);
+const rad = (d: number) => (d * Math.PI) / 180;
+
+/**
+ * Zoom that fits the scene, on both axes.
+ *
+ * Fitting width alone is not enough and the difference is not small: the
+ * columns are extruded, so what the camera has to contain is the footprint
+ * tilted back plus the terrain standing up out of it. On a wide window height
+ * is what binds -- at a 1088x620 frame width alone suggests -0.25 while the
+ * scene needs about -0.8 -- and a narrow frame hides this entirely, because
+ * there width binds and the two agree.
+ *
+ * `footW`/`footD` come from the geometry's own bounding box rather than the
+ * map's 975x610 page box. Albers USA insets Alaska and Hawaii at the lower
+ * left, so the drawn content neither fills that box nor centres in it.
+ */
+function zoomToFit(
+  frameW: number,
+  frameH: number,
+  footW: number,
+  footD: number,
+  columnPx: number,
+) {
+  const spun = Math.abs(SPIN);
+  const across = footW * Math.cos(rad(spun)) + footD * Math.sin(rad(spun));
+  const deep = footW * Math.sin(rad(spun)) + footD * Math.cos(rad(spun));
+  const vertical = deep * Math.sin(rad(TILT)) + columnPx * Math.cos(rad(TILT));
+  return Math.min(
+    Math.log2((frameW * FILL_W) / across),
+    Math.log2((frameH * FILL_H) / vertical),
+  );
+}
 
 
 export default function Relief3D({
   src,
   gradient,
   ticks,
+  floor,
 }: {
   src: string;
   gradient: string;
   ticks: Tick[];
+  /** The price every column is measured up from, fixed across dates. Passed in
+   *  rather than discovered from the scrubber's first publish so the camera can
+   *  be fitted to the real column height at mount, and so the terrain does not
+   *  visibly jump when the scrubber arrives a moment later. */
+  floor?: number;
 }) {
   const [data, setData] = useState<Relief | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -77,10 +116,12 @@ export default function Relief3D({
   // Measured before the canvas mounts, so the fitted zoom is the one deck.gl
   // takes as its initial state. Deliberately not tracked after that: refitting
   // on resize would yank the camera out from under anyone who had moved it.
-  const [frameW, setFrameW] = useState(0);
+  const [frame, setFrame] = useState<{ w: number; h: number } | null>(null);
   useEffect(() => {
     setReady(true);
-    if (wrap.current) setFrameW(wrap.current.clientWidth);
+    if (wrap.current) {
+      setFrame({ w: wrap.current.clientWidth, h: wrap.current.clientHeight });
+    }
   }, []);
   useEffect(() => {
     let dead = false;
@@ -117,8 +158,8 @@ export default function Relief3D({
   // the terrain rise rather than just recolour. Falls back to the snapshot's own
   // floor before the scrubber has published anything.
   const base = useMemo(
-    () => (md ? md.base : data ? elevationBase(data) : 0),
-    [md, data],
+    () => floor ?? (md ? md.base : data ? elevationBase(data) : 0),
+    [floor, md, data],
   );
 
   const polys = useMemo(() => {
@@ -155,6 +196,53 @@ export default function Relief3D({
     return out;
   }, [data, md]);
 
+  // How far the terrain stands above the baseline, in the same projected pixels
+  // the footprint is measured in -- the term the vertical fit turns on.
+  //
+  // Deliberately a high percentile rather than the maximum. A handful of Alaskan
+  // boroughs run to nearly $10 against a mainland that is mostly under $5, and
+  // fitting to those spikes pushes the camera so far back that the country ends
+  // up small in a frame of empty paper. They also sit low and to the left, where
+  // the frame has room to spare, so their tips overshooting costs nothing while
+  // the mainland -- the part being read -- fills the frame.
+  // Bounding box of the geometry actually drawn, in the same coordinates polys
+  // are built in. Used to centre and size the camera: the map's page box is
+  // 975x610, but Albers USA insets Alaska and Hawaii at the lower left, so the
+  // content neither fills that box nor sits in the middle of it. Aiming at the
+  // box centre left the country pushed to one side with a band of empty paper
+  // opposite -- 110px of margin on the left against 354px on the right.
+  const bounds = useMemo(() => {
+    if (!data) return null;
+    const cx = data.w / 2;
+    const cy = data.h / 2;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const c of data.counties) {
+      for (const ring of c.r) {
+        for (const [x, y] of ring) {
+          const px = x - cx;
+          const py = -(y - cy);
+          if (px < x0) x0 = px;
+          if (px > x1) x1 = px;
+          if (py < y0) y0 = py;
+          if (py > y1) y1 = py;
+        }
+      }
+    }
+    if (!isFinite(x0)) return null;
+    return { mx: (x0 + x1) / 2, my: (y0 + y1) / 2, w: x1 - x0, d: y1 - y0 };
+  }, [data]);
+
+  const terrainHeight = useMemo(() => {
+    if (!data) return 0;
+    const prices = data.counties
+      .map((c) => c.p)
+      .filter((p): p is number => p != null)
+      .sort((a, b) => a - b);
+    if (!prices.length) return 0;
+    const p98 = prices[Math.floor((prices.length - 1) * 0.98)];
+    return Math.max(0, p98 - base) * PX_PER_DOLLAR;
+  }, [data, base]);
+
   const layers = useMemo(() => {
     if (!data || !scale) return [];
     return [
@@ -182,14 +270,18 @@ export default function Relief3D({
         className="relative border border-[var(--color-rule)] bg-[var(--color-paper-warm)]"
         style={{ height: 620 }}
       >
-        {ready && data && frameW > 0 ? (
+        {ready && data && frame && bounds ? (
           <DeckGL
             views={new OrbitView({ orbitAxis: "Z", fovy: 40 })}
             initialViewState={{
-              target: [0, 0, 0],
+              // Aimed at the middle of the terrain's height, not at the map
+              // plane. Columns only ever rise, so aiming at the plane puts the
+              // mass above the centre of the frame: it crowds the top edge while
+              // leaving a band of empty paper along the bottom.
+              target: [bounds.mx, bounds.my, 0],
               rotationX: TILT,
               rotationOrbit: SPIN,
-              zoom: zoomToFit(frameW),
+              zoom: zoomToFit(frame.w, frame.h, bounds.w, bounds.d, terrainHeight),
               minZoom: -3,
               maxZoom: 4,
             }}

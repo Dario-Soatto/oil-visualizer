@@ -192,6 +192,7 @@ export default async function Page() {
           gradient={gradientCss(RAMP)}
           ticks={ticks}
           reliefSrc="/relief.json"
+          reliefFloor={sorted[0]}
         >
           {paths}
         </AtlasViews>
