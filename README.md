@@ -212,7 +212,11 @@ ArcGIS service. AAA covers only Anchorage and Mat-Su in Alaska — the DCCED sur
 exists precisely to cover the rest. It matters: the top borough reports close to
 **$10/gal**, which tops the national table outright, and no state-average fill
 would have come close. This survey is semi-annual rather than daily, so those
-counties carry their vintage in the tooltip and a dashed outline on the map.
+counties are drawn with a dashed outline and marked as survey-sourced in the
+tooltip. The precise survey date shows there only while the snapshot is ahead of
+the database; once the day is ingested the tooltip falls back to the generic
+per-source label, because `prices` stores a `source` rather than a free-text
+note. Worth tightening if the vintage ever needs to be visible at a glance.
 
 The reporting period is read from the service rather than pinned. It used to be
 a hardcoded `(year, season)` pair, which rotted quietly: the query kept returning
