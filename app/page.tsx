@@ -34,6 +34,29 @@ export default async function Page() {
   const priced = data.counties.filter((c) => c.p !== null);
   const snapshotDomain = priced.map((c) => c.p as number).sort((a, b) => a - b);
 
+  // The committed snapshot can be newer than anything in Postgres: the daily
+  // refresh commits before it loads, so a failed or skipped ingest leaves the
+  // map ahead of the history. Left alone the scrubber opens on the newest row it
+  // can find and silently rewinds the map -- the header reads "as of" one date
+  // while the counties show another. Carry the snapshot as its own trend point
+  // instead, measured from the prices already on this page.
+  const liveDate =
+    data.fetched && (trend.length === 0 || data.fetched > trend[trend.length - 1].date)
+      ? data.fetched
+      : null;
+  const chartTrend = liveDate
+    ? [
+        ...trend,
+        {
+          date: liveDate,
+          n: priced.length,
+          med: quantile(snapshotDomain, 0.5),
+          p10: quantile(snapshotDomain, 0.1),
+          p90: quantile(snapshotDomain, 0.9),
+        },
+      ]
+    : trend;
+
   // Colour must mean the same thing on every date, so the map is ranked against
   // the pooled distribution over all dates -- not against this snapshot. Ranking
   // each date against itself would make every date look identical and the date
@@ -161,8 +184,8 @@ export default async function Page() {
             </div>
           </details>
         </div>
-        {trend.length > 1 && pooled.length > 1 && (
-          <TimeScrubber trend={trend} pooled={pooled} />
+        {chartTrend.length > 1 && pooled.length > 1 && (
+          <TimeScrubber trend={chartTrend} pooled={pooled} liveDate={liveDate} />
         )}
         <AtlasViews
           viewBox={`0 0 ${data.w} ${data.h}`}
@@ -177,6 +200,15 @@ export default async function Page() {
 
     </div>
   );
+}
+
+/** Linear-interpolated quantile of an ascending array. */
+function quantile(sorted: number[], q: number): number {
+  if (sorted.length === 0) return 0;
+  const i = (sorted.length - 1) * q;
+  const lo = Math.floor(i);
+  const hi = Math.ceil(i);
+  return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
 }
 
 function Stat({ n, label }: { n: string; label: string }) {

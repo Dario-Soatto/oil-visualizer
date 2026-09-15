@@ -10,8 +10,10 @@
  */
 export interface MapDateState {
   date: string;
-  /** fips -> price and source for that date */
-  byFips: Map<string, { p: number; s?: string }>;
+  /** fips -> price for that date, plus whichever of source or an explicit note
+   *  the row carried. Database rows describe themselves with a source; the
+   *  server-rendered snapshot carries its note already written out. */
+  byFips: Map<string, { p: number; s?: string; note?: string | null }>;
   /** the rank domain the current colour scale uses */
   domain: number[];
   /** height baseline, fixed across dates so the terrain rises over time */

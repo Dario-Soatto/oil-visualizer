@@ -13,7 +13,13 @@ const PAD = { t: 10, r: 16, b: 26, l: 42 };
 // a day, so a shape change has to change the URL or stale bodies keep arriving.
 const API_VERSION = 2;
 
-type Row = { fips: string[]; price: number[]; source?: string[] };
+type Row = {
+  fips: string[];
+  price: number[];
+  source?: string[];
+  /** set only for the locally captured snapshot, whose notes are already written */
+  note?: (string | null)[];
+};
 
 /**
  * The trend chart doubles as the date control.
@@ -31,10 +37,15 @@ type Row = { fips: string[]; price: number[]; source?: string[] };
 export default function TimeScrubber({
   trend,
   pooled,
+  liveDate,
 }: {
   trend: TrendPoint[];
   /** the one colour domain: every price on every date ranks against this */
   pooled: number[];
+  /** The snapshot date, when it is newer than any row in the database. That
+   *  date has no /api/map route to fetch, so it is read back off the page the
+   *  server already rendered. */
+  liveDate?: string | null;
 }) {
   const [i, setI] = useState(trend.length - 1);
   const [loading, setLoading] = useState(false);
@@ -77,6 +88,25 @@ export default function TimeScrubber({
     [trend, t0, t1],
   );
 
+  // Capture the server-rendered snapshot before any repaint overwrites it. This
+  // effect is declared first on purpose: effects run in order, so this lands in
+  // the cache before the paint below reads from it. Scrubbing away and back then
+  // costs nothing, and the date works even though the database has no row for it.
+  useEffect(() => {
+    if (!liveDate || cache.current.has(liveDate)) return;
+    const fips: string[] = [];
+    const price: number[] = [];
+    const note: (string | null)[] = [];
+    document.querySelectorAll<SVGPathElement>("path.county[data-f]").forEach((p) => {
+      const f = p.getAttribute("data-f");
+      if (!f || p.dataset.p == null) return;
+      fips.push(f);
+      price.push(Number(p.dataset.p));
+      note.push(p.dataset.note ?? null);
+    });
+    if (fips.length) cache.current.set(liveDate, { fips, price, note });
+  }, [liveDate]);
+
   // ---- repaint the map for the selected date -------------------------------
   useEffect(() => {
     let cancelled = false;
@@ -109,8 +139,11 @@ export default function TimeScrubber({
       // because the domain covers the full observed range.
       const domain = pooled;
       const src = data.source;
-      const byFips = new Map<string, { p: number; s?: string }>();
-      data.fips.forEach((f, k) => byFips.set(f, { p: data!.price[k], s: src?.[k] }));
+      const notes = data.note;
+      const byFips = new Map<string, { p: number; s?: string; note?: string | null }>();
+      data.fips.forEach((f, k) =>
+        byFips.set(f, { p: data!.price[k], s: src?.[k], note: notes?.[k] }),
+      );
 
       const colour = new Map<number, string>();
       document.querySelectorAll<SVGPathElement>("path.county[data-f]").forEach((p) => {
@@ -127,7 +160,7 @@ export default function TimeScrubber({
         }
         p.classList.remove("no-data");
         p.dataset.p = String(v.p);
-        const n = v.s ? SOURCE_NOTE[v.s] : undefined;
+        const n = v.note ?? (v.s ? SOURCE_NOTE[v.s] : undefined);
         if (n) p.dataset.note = n;
         else delete p.dataset.note;
 

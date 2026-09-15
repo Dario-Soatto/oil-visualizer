@@ -123,7 +123,9 @@ export default function Relief3D({
           p: price,
           n: c.n,
           s: c.s,
-          note: md ? (dated?.s ? SOURCE_NOTE[dated.s] ?? null : null) : c.note ?? null,
+          note: md
+            ? dated?.note ?? (dated?.s ? SOURCE_NOTE[dated.s] ?? null : null)
+            : c.note ?? null,
           date: md ? md.date : null,
         });
       }
