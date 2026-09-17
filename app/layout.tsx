@@ -20,6 +20,16 @@ const SITE_DESCRIPTION =
   "Retail gasoline prices for every US county with a reported figure, from AAA's daily county averages and the Alaska community fuel survey.";
 
 export const metadata: Metadata = {
+  // Open Graph needs absolute URLs. Without a base, the generated card's path is
+  // emitted relative and most scrapers simply drop it, which is indistinguishable
+  // from having no card at all. Vercel supplies the deployment host in CI; the
+  // production domain is the fallback so local builds still emit something sane.
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ??
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : "https://oil-visualizer.vercel.app"),
+  ),
   title: SITE_TITLE,
   description: SITE_DESCRIPTION,
   openGraph: {
