@@ -40,18 +40,6 @@ export default function RootLayout({
       className={`${mono.variable} ${serif.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <header className="px-8 py-6 border-b border-[var(--color-rule)] sticky top-0 z-20 bg-[var(--color-paper)]">
-          <div className="mx-auto max-w-6xl flex items-baseline justify-between gap-4">
-            <div className="text-[10px] tracking-widest uppercase text-[var(--color-ink-soft)]">
-              ppa
-              <span className="text-[var(--color-ink-mute)]"> / </span>
-              <span className="text-[var(--color-ink-mute)]">pump price atlas</span>
-            </div>
-            <span className="text-[10px] tracking-wider text-[var(--color-ink-mute)]">
-              source: aaa daily &middot; census cb_2024 counties
-            </span>
-          </div>
-        </header>
         <main className="flex-1">{children}</main>
         <footer className="border-t border-[var(--color-rule)] mt-24 py-6 px-8">
           <div className="mx-auto max-w-6xl text-[10px] tracking-wider text-[var(--color-ink-mute)] flex items-baseline justify-between gap-4 flex-wrap">

@@ -115,16 +115,19 @@ export default async function Page() {
 
   return (
     <div className="mx-auto max-w-6xl px-8">
-      <section className="flex flex-wrap items-end justify-between gap-8 py-14">
-        <h1 className="font-serif text-5xl leading-[1.05] text-[var(--color-ink)] tracking-tight">
+      {/* Title and figures sit on one line: the numbers are the headline as much
+          as the sentence is, and stacking them read as a caption under a banner.
+          Only below `sm` do they drop underneath, where a row cannot fit. */}
+      <section className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-6 sm:gap-10 pt-10 pb-8">
+        <h1 className="font-serif text-4xl lg:text-5xl leading-[1.05] text-[var(--color-ink)] tracking-tight sm:flex-1 sm:min-w-0">
           What a gallon costs, county by county
         </h1>
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 sm:shrink-0 sm:items-end">
           <div className="grid grid-cols-4 gap-x-6 text-xs">
             <Stat n={priced.length.toLocaleString()} label="counties" />
             <Stat n={money(median(aaaValues))} label="median" />
-            <Stat n={money(cheapest.p as number)} label="cheapest" />
-            <Stat n={money(dearest.p as number)} label="dearest" />
+            <Stat n={money(cheapest.p as number)} label="lowest" />
+            <Stat n={money(dearest.p as number)} label="highest" />
           </div>
           <p className="text-[10px] tracking-wider text-[var(--color-ink-mute)]">
             {priced.length.toLocaleString()}/{data.counties.length.toLocaleString()} counties
@@ -142,8 +145,21 @@ export default async function Page() {
         </div>
       </section>
 
-      <section className="pb-12 border-t border-[var(--color-rule)] pt-8">
-        <div className="flex items-baseline justify-between mb-5 gap-4 flex-wrap">
+      <section className="pb-12">
+        {chartTrend.length > 1 && pooled.length > 1 && (
+          <TimeScrubber trend={chartTrend} pooled={pooled} liveDate={liveDate} />
+        )}
+        <AtlasViews
+          viewBox={`0 0 ${data.w} ${data.h}`}
+          stateLines={stateLines}
+          gradient={gradientCss(RAMP)}
+          ticks={ticks}
+          reliefSrc="/relief.json"
+          reliefFloor={sorted[0]}
+        >
+          {paths}
+        </AtlasViews>
+        <div className="flex items-baseline justify-between mt-8 gap-4 flex-wrap">
           <details className="group text-xs">
             <summary className="cursor-pointer list-none tracking-widest uppercase text-[var(--color-ink-soft)] hover:text-[var(--color-ink)] select-none">
               <span className="inline-block w-3 text-[var(--color-ink-mute)] group-open:rotate-90 transition-transform">
@@ -183,19 +199,6 @@ export default async function Page() {
             </div>
           </details>
         </div>
-        {chartTrend.length > 1 && pooled.length > 1 && (
-          <TimeScrubber trend={chartTrend} pooled={pooled} liveDate={liveDate} />
-        )}
-        <AtlasViews
-          viewBox={`0 0 ${data.w} ${data.h}`}
-          stateLines={stateLines}
-          gradient={gradientCss(RAMP)}
-          ticks={ticks}
-          reliefSrc="/relief.json"
-          reliefFloor={sorted[0]}
-        >
-          {paths}
-        </AtlasViews>
       </section>
 
     </div>

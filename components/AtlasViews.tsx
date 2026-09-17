@@ -52,7 +52,24 @@ export default function AtlasViews({
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
+      {/* The flat map's 3,142 paths are server-rendered, so it stays mounted and
+          is merely hidden -- rebuilding that subtree on every toggle is wasted
+          work, and the date scrubber paints those paths whether or not they are
+          the visible view. The 3D unmounts, which releases its WebGL context. */}
+      <div hidden={mode !== "flat"}>
+        <MapView viewBox={viewBox} stateLines={stateLines} gradient={gradient} ticks={ticks}>
+          {children}
+        </MapView>
+      </div>
+
+      {mode === "relief" && (
+        <Relief3D src={reliefSrc} gradient={gradient} ticks={ticks} floor={reliefFloor} />
+      )}
+
+      {/* Below the map rather than above it: this switches how the thing you are
+          already looking at is drawn, so it reads as a control on the map rather
+          than as a heading for it. */}
+      <div className="flex justify-end mt-3">
         <div className="flex gap-px" role="group" aria-label="view">
           <button
             className={btn(mode === "flat")}
@@ -70,20 +87,6 @@ export default function AtlasViews({
           </button>
         </div>
       </div>
-
-      {/* The flat map's 3,142 paths are server-rendered, so it stays mounted and
-          is merely hidden -- rebuilding that subtree on every toggle is wasted
-          work, and the date scrubber paints those paths whether or not they are
-          the visible view. The 3D unmounts, which releases its WebGL context. */}
-      <div hidden={mode !== "flat"}>
-        <MapView viewBox={viewBox} stateLines={stateLines} gradient={gradient} ticks={ticks}>
-          {children}
-        </MapView>
-      </div>
-
-      {mode === "relief" && (
-        <Relief3D src={reliefSrc} gradient={gradient} ticks={ticks} floor={reliefFloor} />
-      )}
     </div>
   );
 }
